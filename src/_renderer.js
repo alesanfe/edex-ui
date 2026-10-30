@@ -448,6 +448,7 @@ async function initUI() {
     window.mods.netstat = new Netstat("mod_column_right");
     window.mods.globe = new LocationGlobe("mod_column_right");
     window.mods.conninfo = new Conninfo("mod_column_right");
+    window.mods.openportlist = new OpenPortList("mod_column_right");
 
     // Fade-in animations
     document.querySelectorAll(".mod_column").forEach(e => {
@@ -522,6 +523,36 @@ async function initUI() {
     // Resend terminal CWD to fsDisp if we're hot reloading
     if (window.performance.navigation.type === 1) {
         window.term[window.currentTerm].resendCWD();
+
+        // See #630 - Reconnect to extra terminals that are still running on the back-end
+        ipc.once("getExtraTtys-reply", (e, ports) => {
+            (ports || []).slice(0, 4).forEach((port, i) => {
+                let number = i + 1;
+                if (window.term[number]) return;
+
+                window.term[number] = new Terminal({
+                    role: "client",
+                    parentId: "terminal"+number,
+                    port: Number(port)
+                });
+
+                window.term[number].onclose = e => {
+                    delete window.term[number].onprocesschange;
+                    document.getElementById("shell_tab"+number).innerHTML = "<p>EMPTY</p>";
+                    document.getElementById("terminal"+number).innerHTML = "";
+                    window.term[number].term.dispose();
+                    delete window.term[number];
+                    window.useAppShortcut("PREVIOUS_TAB");
+                };
+
+                window.term[number].onprocesschange = p => {
+                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${p}</p>`;
+                };
+
+                document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
+            });
+        });
+        ipc.send("getExtraTtys");
     }
 
     await _delay(200);
@@ -721,6 +752,16 @@ window.openSettings = async () => {
                         <td><input type="text" id="settingsEditor-pingAddr" value="${window.settings.pingAddr || "1.1.1.1"}"></td>
                     </tr>
                     <tr>
+                        <td>proxy</td>
+                        <td>HTTP(S) proxy URL for outbound requests (e.g. http://proxy:8080)</td>
+                        <td><input type="text" id="settingsEditor-proxy" value="${window.settings.proxy || ""}"></td>
+                    </tr>
+                    <tr>
+                        <td>proxyBypassList</td>
+                        <td>Comma-separated list of hosts that bypass the proxy</td>
+                        <td><input type="text" id="settingsEditor-proxyBypassList" value="${window.settings.proxyBypassList || ""}"></td>
+                    </tr>
+                    <tr>
                         <td>clockHours</td>
                         <td>Clock format (12/24 hours)</td>
                         <td><select id="settingsEditor-clockHours">
@@ -853,6 +894,8 @@ window.writeSettingsFile = () => {
         audioVolume: Number(document.getElementById("settingsEditor-audioVolume").value),
         disableFeedbackAudio: (document.getElementById("settingsEditor-disableFeedbackAudio").value === "true"),
         pingAddr: document.getElementById("settingsEditor-pingAddr").value,
+        proxy: document.getElementById("settingsEditor-proxy").value,
+        proxyBypassList: document.getElementById("settingsEditor-proxyBypassList").value,
         clockHours: Number(document.getElementById("settingsEditor-clockHours").value),
         port: Number(document.getElementById("settingsEditor-port").value),
         monitor: Number(document.getElementById("settingsEditor-monitor").value),

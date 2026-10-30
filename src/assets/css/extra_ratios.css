@@ -40,6 +40,15 @@
     div#mod_toplist::after {
         right: -15.6vw;
     }
+    div#mod_openportlist i {
+        font-size: 1.10vh;
+    }
+    table#mod_openportlist_table {
+        padding-left: 0.2vh;
+    }
+    div#mod_openportlist::after {
+        right: -15.6vw;
+    }
 
     div#mod_netstat_innercontainer {
         font-size: 1vh;
@@ -72,6 +81,9 @@
     table#mod_toplist_table {
         margin-top: -1vh;
     }
+    table#mod_openportlist_table {
+        margin-top: -1vh;
+    }
 
     div#mod_netstat_inner {
         width: 100%;
@@ -83,6 +95,73 @@
 
     div#mod_conninfo canvas {
         height: 8vh;
+    }
+}
+
+/* See #832 - real-world "21:9" monitors (e.g. 3440x1440, ratio 43/18) and other
+   wide screens whose aspect ratio isn't exactly 64/27 */
+@media (min-aspect-ratio: 64/27) {
+    div.keyboard_row#row_1 > div.keyboard_enter {
+        height: 2.1vw;
+        margin-top: 0.2vh;
+    }
+    div.keyboard_row#row_2 > div.keyboard_enter {
+        height: 6vh;
+    }
+    div.keyboard_key#keyboard_spacebar {
+        width: 60vh;
+    }
+    div.keyboard_row#row_space {
+        left: 1.6vw;
+    }
+
+    div#mod_cpuinfo > div > div {
+        width: 94%;
+    }
+
+    table#mod_toplist_table {
+        margin-top: -1vh;
+    }
+    table#mod_openportlist_table {
+        margin-top: -1vh;
+    }
+
+    div#mod_netstat_inner {
+        width: 100%;
+    }
+
+    div#mod_globe canvas {
+        width: 85%;
+    }
+
+    div#mod_conninfo canvas {
+        height: 8vh;
+    }
+}
+
+/* See #832 - 32:9 "super ultrawide" screens and wider */
+@media (min-aspect-ratio: 32/9) {
+    /* At 32:9, vw units are disproportionately large; keep key heights vh-based */
+    div.keyboard_row#row_1 > div.keyboard_enter {
+        height: 4.6vh;
+        margin-top: 0.2vh;
+    }
+    div.keyboard_key#keyboard_spacebar {
+        width: 80vh;
+    }
+    div.keyboard_row#row_space {
+        left: 1vw;
+    }
+
+    section.mod_column {
+        width: 15%;
+    }
+
+    div#mod_toplist::after {
+        right: -13.5vw;
+    }
+    div#mod_openportlist::after {
+        right: -13.5vw;
     }
 }
 
@@ -146,6 +225,16 @@
         font-size: 1.1vh;
     }
     table#mod_toplist_table td:nth-child(2) {
+        min-width: 4vw;
+        max-width: 4vw;
+    }
+    div#mod_openportlist i {
+        opacity: 0;
+    }
+    table#mod_openportlist_table td {
+        font-size: 1.1vh;
+    }
+    table#mod_openportlist_table td:nth-child(2) {
         min-width: 4vw;
         max-width: 4vw;
     }

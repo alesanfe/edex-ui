@@ -10,6 +10,16 @@ class FilesystemDisplay {
         this._formatBytes = (a,b) => {if(0==a)return"0 Bytes";var c=1024,d=b||2,e=["Bytes","KB","MB","GB","TB","PB","EB","ZB","YB"],f=Math.floor(Math.log(a)/Math.log(c));return parseFloat((a/Math.pow(c,f)).toFixed(d))+" "+e[f]};
         this.fileIconsMatcher = require("./assets/misc/file-icons-match.js");
         this.icons = require("./assets/icons/file-icons.json");
+        // Icon names that may legitimately apply to directories (matched on the whole name,
+        // not on a file extension) - see #1167
+        this._dirIcons = new Set([
+            "acre", "agda", "alacritty-alt", "appstore", "arttext", "arttext4", "atom",
+            "automator", "azurepipelines", "bazaar", "bitcoin", "bloc", "bower", "buildkite",
+            "cabal", "chef", "circleci", "cnab", "cpan", "cubit", "cvs", "deno", "dependabot",
+            "devcontainer", "docker", "dropbox", "dub", "dvc", "dylib", "emacs", "expo",
+            "fossil", "git", "github", "gitlab", "hg", "istanbul", "meteor", "node",
+            "package", "svn", "textmate", "ufo", "vagrant", "vim", "vs", "wine", "yarn"
+        ]);
         this.edexIcons = {
             theme: {
                 width: 24,
@@ -430,6 +440,10 @@ class FilesystemDisplay {
                         break;
                     default:
                         let iconName = this.fileIconsMatcher(e.name);
+                        // See #1167 - file-extension based icons shouldn't be applied to directories
+                        if (e.category === "dir" && !this._dirIcons.has(iconName)) {
+                            iconName = undefined;
+                        }
                         icon = this.icons[iconName];
                         if (typeof icon === "undefined") {
                             if (e.type === "file") icon = this.icons.file;
@@ -450,7 +464,7 @@ class FilesystemDisplay {
                 e.type = type;
 
                 // Handle displayable media
-                if (e.type === 'video' || e.type === 'audio' || e.type === 'image') {
+                if (e.type === 'video' || e.type === 'audio' || e.type === 'image' || e.type === 'sqlite') {
                     this.cwd[blockIndex].type = e.type;
                     cmd = `window.fsDisp.openMedia(${blockIndex})`;
                 }
@@ -717,6 +731,27 @@ class FilesystemDisplay {
                                 </div>
                             </div>`;
                     break;
+                case "sqlite":
+                    html = `
+<div id="sqlite_container">
+    <div id="sqlite_queryArea">
+        <span class="title">Query</span>
+        <textarea id="sqlite_query" rows="10" cols="20"></textarea>
+        <span id="sqlite_run" class="clickable">Run</span>
+    </div>
+    <div id="sqlite_historyArea">
+        <span class="title">History</span>
+        <ul id="sqlite_history"></ul>
+    </div>
+    <div id="sqlite_resultsArea">
+        <table id="sqlite_results"></table>
+    </div>
+    <div id="sqlite_tableArea">
+        <span class="title">Tables</span>
+        <ul id="sqlite_tables"></ul>
+    </div>
+</div>`;
+                    break;
                 default:
                     throw new Error("fsDisp media displayer: unknown type " + (type || block.type));
             }
@@ -725,13 +760,18 @@ class FilesystemDisplay {
                 type: "custom",
                 title: _escapeHtml(name),
                 html
-            });
+            }, (block.type === "sqlite") ? () => { window.keyboard.attach(); } : undefined);
             if (block.type === "audio" || block.type === "video") {
                 new MediaPlayer({
                     modalId: newModal.id,
                     path: block.path,
                     type: block.type
                 });
+            }
+
+            if (block.type === "sqlite") {
+                window.keyboard.detach();
+                new SqliteInterface(block.path);
             }
         };
     }

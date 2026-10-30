@@ -105,36 +105,56 @@ class Netstat {
                 offline = true;
             } else {
                 if (this.runsBeforeGeoIPUpdate === 0 && this.lastconn.finished) {
-                    this.lastconn = require("https").get({host: "myexternalip.com", port: 443, path: "/json", localAddress: net.ip4, agent: this._httpsAgent}, res => {
-                        let rawData = "";
-                        res.on("data", chunk => {
-                            rawData += chunk;
-                        });
-                        res.on("end", () => {
-                            try {
-                                let data = JSON.parse(rawData);
-                                this.ipinfo = {
-                                    ip: data.ip,
-                                    geo: this.geoLookup.get(data.ip).location
-                                };
+                    let handleGeoIPData = rawData => {
+                        try {
+                            let data = JSON.parse(rawData);
+                            this.ipinfo = {
+                                ip: data.ip,
+                                geo: this.geoLookup.get(data.ip).location
+                            };
 
-                                let ip = this.ipinfo.ip;
-                                document.querySelector("#mod_netstat_innercontainer > div:nth-child(2) > h2").innerHTML = window._escapeHtml(ip);
+                            let ip = this.ipinfo.ip;
+                            document.querySelector("#mod_netstat_innercontainer > div:nth-child(2) > h2").innerHTML = window._escapeHtml(ip);
 
-                                this.runsBeforeGeoIPUpdate = 10;
-                            } catch(e) {
-                                this.failedAttempts[e] = (this.failedAttempts[e] || 0) + 1;
-                                if (this.failedAttempts[e] > 2) return false;
-                                console.warn(e);
-                                console.info(rawData.toString());
-                                let electron = require("electron");
-                                electron.ipcRenderer.send("log", "note", "NetStat: Error parsing data from myexternalip.com");
-                                electron.ipcRenderer.send("log", "debug", `Error: ${e}`);
-                            }
+                            this.runsBeforeGeoIPUpdate = 10;
+                        } catch(e) {
+                            this.failedAttempts[e] = (this.failedAttempts[e] || 0) + 1;
+                            if (this.failedAttempts[e] > 2) return false;
+                            console.warn(e);
+                            console.info(rawData.toString());
+                            let electron = require("electron");
+                            electron.ipcRenderer.send("log", "note", "NetStat: Error parsing data from myexternalip.com");
+                            electron.ipcRenderer.send("log", "debug", `Error: ${e}`);
+                        }
+                    };
+
+                    if (window.settings.proxy) {
+                        // See #1050 - go through Chromium's network stack so the proxy configuration applies
+                        let conn = {finished: false};
+                        this.lastconn = conn;
+                        fetch("https://myexternalip.com/json", {cache: "no-store"}).then(res => {
+                            res.text().then(rawData => {
+                                conn.finished = true;
+                                handleGeoIPData(rawData);
+                            }).catch(e => {
+                                conn.finished = true;
+                            });
+                        }).catch(e => {
+                            conn.finished = true;
                         });
-                    }).on("error", e => {
-                        // Drop it
-                    });
+                    } else {
+                        this.lastconn = require("https").get({host: "myexternalip.com", port: 443, path: "/json", localAddress: net.ip4, agent: this._httpsAgent}, res => {
+                            let rawData = "";
+                            res.on("data", chunk => {
+                                rawData += chunk;
+                            });
+                            res.on("end", () => {
+                                handleGeoIPData(rawData);
+                            });
+                        }).on("error", e => {
+                            // Drop it
+                        });
+                    }
                 } else if (this.runsBeforeGeoIPUpdate !== 0) {
                     this.runsBeforeGeoIPUpdate = this.runsBeforeGeoIPUpdate - 1;
                 }
@@ -154,6 +174,15 @@ class Netstat {
         });
     }
     ping(target, port, local) {
+        // See #1050 - a raw TCP socket can't go through an HTTP proxy; measure latency over HTTP instead
+        if (window.settings.proxy) {
+            return new Promise((resolve, reject) => {
+                let start = performance.now();
+                fetch("https://myexternalip.com/json", {cache: "no-store"}).then(() => {
+                    resolve(performance.now() - start);
+                }).catch(reject);
+            });
+        }
         return new Promise((resolve, reject) => {
             let s = new require("net").Socket();
             let start = process.hrtime();

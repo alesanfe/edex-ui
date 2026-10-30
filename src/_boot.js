@@ -59,6 +59,8 @@ const innerFontsDir = path.join(__dirname, "assets/fonts");
 
 // Unset proxy env variables to avoid connection problems on the internal websockets
 // See #222
+// Keep the value around so it can be applied to the Chromium network stack - see #1050
+let envProxy = process.env.https_proxy || process.env.http_proxy || null;
 if (process.env.http_proxy) delete process.env.http_proxy;
 if (process.env.https_proxy) delete process.env.https_proxy;
 
@@ -103,6 +105,22 @@ if (!fs.existsSync(settingsFile)) {
         experimentalFeatures: false
     }, "", 4));
     signale.info(`Default settings written to ${settingsFile}`);
+}
+// Support for proxies / regulated networks - see #1050
+// The "proxy" setting (or standard *_proxy env vars) is applied to the Chromium
+// network stack; internal websockets are not affected since they run over Node.js
+try {
+    let earlySettings = JSON.parse(fs.readFileSync(settingsFile, {encoding: "utf-8"}));
+    let proxyServer = earlySettings.proxy || envProxy;
+    if (proxyServer) {
+        app.commandLine.appendSwitch("proxy-server", proxyServer);
+        signale.info(`Using proxy server ${proxyServer}`);
+    }
+    if (earlySettings.proxyBypassList) {
+        app.commandLine.appendSwitch("proxy-bypass-list", earlySettings.proxyBypassList);
+    }
+} catch(e) {
+    signale.warn("Could not read settings file for proxy configuration");
 }
 // Create default shortcuts file
 if (!fs.existsSync(shortcutsFile)) {
@@ -364,17 +382,21 @@ app.on('ready', async () => {
                 signale.success(`TTY ${port} connected to frontend (process PID ${pid})`);
             };
             term.onresized = () => {};
+            // See #630 - keep the TTY alive when the frontend disconnects (e.g. hot reload),
+            // so that the tab can be restored when the UI comes back up
             term.ondisconnected = () => {
-                term.onclosed = () => {};
-                term.close();
-                term.wss.close();
-                extraTtys[term.port] = null;
-                term = null;
+                signale.error(`Lost connection to frontend (tty ${port})`);
+                signale.watch("Waiting for frontend connection...");
             };
 
             extraTtys[port] = term;
             e.sender.send("ttyspawn-reply", "SUCCESS: "+port);
         }
+    });
+
+    // See #630 - allow the frontend to re-attach to extra TTYs still alive after a UI reload
+    ipc.on("getExtraTtys", e => {
+        e.sender.send("getExtraTtys-reply", Object.keys(extraTtys).filter(p => extraTtys[p] !== null && extraTtys[p].wss));
     });
 
     // Backend support for theme and keyboard hotswitch
