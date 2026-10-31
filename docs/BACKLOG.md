@@ -12,7 +12,7 @@ estado real tras la release `v3.0.0`. Etiquetas: `P0 bloqueante` `P1 paridad`
 | P0-2 | Electron 12→43 | ✅ | 43.8.6, Chromium 150-class |
 | P0-3 | contextIsolation + preload | ✅ | `nodeIntegration:false` + sandbox + shims `window.edex/fs/remote` |
 | P0-4 | Sanear deps críticas | ✅ | 0 críticas/altas; sqlite3@6, overrides node-gyp/tar |
-| P0-5 | CI multi-plataforma | ✅ | win/linux-x64/arm64/darwin x64+arm64 verdes; armv7l restaurado (system 7za) |
+| P0-5 | CI multi-plataforma | ✅ | win/linux-x64/arm64/armv7l/darwin x64+arm64 verdes |
 | P0-6 | Releases + checksums + SBOM | ✅ | `SHA256SUMS.txt` + CycloneDX SBOM en v3.0.0. Firma: se activa con secrets `CSC_*`/`APPLE_*` (pipeline ya lo soporta) |
 | P0-7 | Tests mínimos | ✅ | `node --test`: 20 tests (CVE, SSH, workspaces, icons) |
 | P0-8 | SECURITY.md | ✅ | `SECURITY.md` + modelo de amenazas en `docs/design/PLUGIN-THREAT-MODEL.md` |
