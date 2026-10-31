@@ -3,6 +3,24 @@ name: Build packaged binaries
 on: [push, pull_request, create]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+    - name: Install deps
+      run: npm ci --no-audit --no-fund && npm --prefix src ci --no-audit --no-fund
+    - name: Unit and module tests
+      run: npm run test:unit
+    - name: Install E2E runtime (xvfb + electron libs)
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgtk-3-0 libgbm1 libnss3 libasound2 >/dev/null
+    - name: E2E tests
+      run: xvfb-run -a npm run test:e2e
+      timeout-minutes: 8
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -212,7 +230,7 @@ jobs:
   release:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux, build-linux-armv7l, build-linux-arm64, build-windows, build-darwin]
+    needs: [test, build-linux, build-linux-armv7l, build-linux-arm64, build-windows, build-darwin]
     runs-on: ubuntu-latest
     permissions:
       contents: write

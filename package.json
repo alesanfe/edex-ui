@@ -27,6 +27,8 @@
     "postbuild-darwin": "rm -R prebuild-src",
     "postbuild-windows": "rmdir /S /Q prebuild-src",
     "test": "node prebuild-copy.js && node prebuild-minify.js && cd prebuild-src && npm install && snyk test && cd .. && rm -R prebuild-src",
+    "test:unit": "node --test src/tests/cve-2023-30856.test.js src/tests/file-icons-match.test.js src/tests/workspaces.test.js src/tests/ssh-profiles.test.js src/tests/plugins.test.js src/tests/ai-assistant.test.js src/tests/modules.test.js",
+    "test:e2e": "node --test src/tests/e2e.test.js",
     "init-file-icons": "git submodule update --init",
     "update-file-icons": "git submodule foreach git pull origin master && node file-icons-generator.js",
     "postinstall": "electron-rebuild"
