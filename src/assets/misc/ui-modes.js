@@ -77,9 +77,15 @@ window.initPausable = obj => {
 
 window.applyUIMode = (name, persist) => {
     const caps = window.UI_MODES[name] || window.UI_MODES.immersive;
+    // A11Y-002: the OS reduced-motion preference clamps the mode's animation
+    // level - "full" becomes "reduced", anything else stays as configured.
+    let animLevel = caps.animations;
+    if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches && animLevel === "full") {
+        animLevel = "reduced";
+    }
     window.uiMode = {name: window.UI_MODES[name] ? name : "immersive", caps};
     document.body.setAttribute("data-ui-mode", window.uiMode.name);
-    document.body.setAttribute("data-animations", caps.animations);
+    document.body.setAttribute("data-animations", animLevel);
 
     // Widget-level on/off on top of mode visibility (MON-001): a widget is
     // shown only when the monitor level includes it AND its toggle is on.

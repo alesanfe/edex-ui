@@ -35,6 +35,28 @@ original `GitSquared/edex-ui` issue and pull-request backlog.
 - Ultrawide 21:9 / 32:9 support (#832).
 - macOS arm64 (Apple Silicon) build target (#1054).
 - Update checker gracefully handles repositories with no published releases.
+- **xterm.js 5.x** terminal stack (`@xterm/xterm` + scoped addons): scrollback
+  search (`Ctrl+Shift+F`, floating bar, Escape-safe), secure hyperlinks and
+  OSC8 links opened through the main process (`https?` only), configurable
+  scrollback (`termScrollback`, 500–50000, default 5000), ligatures via the
+  browser bundle, WebGL renderer with canvas fallback.
+- **UI modes**: immersive / productive / light capability sets with live
+  hot-switching (`UI_MODE_NEXT` action, settings select, first-run chooser);
+  monitor polling and animation loops pause/resume, not just hide.
+- **Persistent workspaces**: named workspaces capture terminal tabs and
+  working directories, restore safely after reload (`WORKSPACES` action).
+- **SSH profiles**: validated profile store (alias/host/user/port/remoteDir/
+  env/color — no secrets), argv-array spawning via `ttyspawn-ssh`, profile
+  palette (`SSH_PROFILES` action), host identity banner with environment
+  accent.
+- **Modular monitor**: per-widget on/off (`MONITOR_WIDGETS` action), GPU/VRAM
+  widget via `si.graphics()`, per-mode polling cadence + `monitorPollScale`,
+  bounded sample history (`monitor-history.json`) with opt-out, threshold
+  alerts (`settings.alerts`).
+- **Accessibility/onboarding**: `prefers-reduced-motion` clamps animation
+  level, bundled high-contrast theme, theme JSON importer with validation +
+  preview/revert (`THEME_IMPORT` action), versioned `settings.json` schema
+  (`configVersion`).
 
 ### Changed
 
@@ -54,8 +76,8 @@ original `GitSquared/edex-ui` issue and pull-request backlog.
 
 - CWD tracking on Windows is not possible with portable APIs: the filesystem
   module falls back to the last known directory ("detached" mode).
-- Terminal ligatures are unavailable (the font-finder backend has no browser
-  build); the feature degrades gracefully instead of failing.
+- Terminal ligatures require a font with OpenType `calt` features (Fira Code,
+  Cascadia Code); with other fonts the toggle is a no-op.
 - Release binaries are unsigned unless `CSC_*`/`APPLE_*` secrets are configured
   in CI; see `SECURITY.md` for the verification workflow (SHA-256 checksums and
   SBOM are always published).

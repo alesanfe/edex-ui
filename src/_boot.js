@@ -514,6 +514,14 @@ app.on('ready', async () => {
     signale.info(`Shell found at ${settings.shell}`);
     signale.success(`Settings loaded!`);
 
+    // ONB-003: stamp config schema version; migrations keyed on this live here
+    const CONFIG_VERSION = 2;
+    if (settings.configVersion !== CONFIG_VERSION) {
+        settings.configVersion = CONFIG_VERSION;
+        fs.writeFileSync(settingsFile, JSON.stringify(settings, null, 4), {encoding: "utf-8"});
+        signale.info(`Settings schema stamped to v${CONFIG_VERSION}`);
+    }
+
     if (!require("fs").existsSync(settings.cwd)) throw new Error("Configured cwd path does not exist.");
 
     // See #366

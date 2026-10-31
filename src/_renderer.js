@@ -1185,6 +1185,9 @@ window.useAppShortcut = action => {
         case "MONITOR_WIDGETS":
             window.openMonitorWidgets();
             return true;
+        case "THEME_IMPORT":
+            window.importThemeInteractive();
+            return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();
             return true;
