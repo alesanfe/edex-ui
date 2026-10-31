@@ -244,6 +244,7 @@ function createWindow(settings) {
             nodeIntegration: true,
             nodeIntegrationInSubFrames: false,
             allowRunningInsecureContent: false,
+            navigateOnDragDrop: false,
             experimentalFeatures: settings.experimentalFeatures || false
         }
     });
@@ -427,6 +428,12 @@ app.on('web-contents-created', (e, contents) => {
     contents.on('will-navigate', (e, url) => {
         if (url !== contents.getURL()) e.preventDefault();
     });
+
+    // The app needs no web permissions (geolocation, media, notifications...)
+    contents.session.setPermissionRequestHandler((wc, permission, callback) => {
+        callback(false);
+    });
+    contents.session.setPermissionCheckHandler(() => false);
 });
 
 app.on('window-all-closed', () => {

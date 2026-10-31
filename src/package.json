@@ -38,7 +38,7 @@
     "shell-env": "3.0.1",
     "signale": "1.4.0",
     "smoothie": "1.36.1",
-    "sqlite3": "5.1.7",
+    "sqlite3": "^6.0.1",
     "systeminformation": "^5.33.19",
     "tail": "2.2.4",
     "username": "5.1.0",
@@ -55,6 +55,10 @@
   },
   "allowScripts": {
     "node-pty@1.1.0": true,
-    "sqlite3@5.1.7": true
+    "sqlite3@6.0.1": true
+  },
+  "scripts": {
+    "test:unit": "node --test \"tests/**/*.test.js\"",
+    "test:cve": "node --test tests/cve-2023-30856.test.js"
   }
 }
