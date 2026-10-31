@@ -48,6 +48,7 @@ const fsShim = {
     readFileSync: (p, enc) => chk(ipc.sendSync("edex:fs:readFileSync", p, enc || "utf8")),
     existsSync: (p) => chk(ipc.sendSync("edex:fs:existsSync", p)),
     writeFileSync: (p, data, enc) => chk(ipc.sendSync("edex:fs:writeFileSync", p, data, enc || "utf8")),
+    mkdirSync: (p, opts) => chk(ipc.sendSync("edex:fs:mkdirSync", p, opts || null)),
     readJsonSync: (p) => JSON.parse(chk(ipc.sendSync("edex:fs:readFileSync", p, "utf8"))),
     statSync: (p) => hydrateStat(chk(ipc.sendSync("edex:fs:statSync", p))),
     lstatSync: (p) => fsShim.statSync(p),

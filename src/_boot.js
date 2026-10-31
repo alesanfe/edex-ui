@@ -94,6 +94,7 @@ function fsSync(handler) {
 ipc.on("edex:fs:readFileSync", fsSync((p, enc) => fs.readFileSync(p, enc)));
 ipc.on("edex:fs:existsSync", fsSync((p) => fs.existsSync(p)));
 ipc.on("edex:fs:writeFileSync", fsSync((p, data, enc) => { fs.writeFileSync(p, data, enc); return null; }));
+ipc.on("edex:fs:mkdirSync", fsSync((p, opts) => { fs.mkdirSync(p, opts || { recursive: true }); return null; }));
 ipc.on("edex:fs:statSync", fsSync((p) => {
     const s = fs.statSync(p);
     return { _f: s.isFile(), _d: s.isDirectory(), _l: s.isSymbolicLink(),
@@ -323,7 +324,8 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+X", action: "TAB_X", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+S", action: "SETTINGS", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+K", action: "SHORTCUTS", enabled: true },
-        { type: "app", trigger: "Ctrl+Shift+F", action: "FUZZY_SEARCH", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+F", action: "TERMINAL_SEARCH", enabled: true },
+        { type: "app", trigger: "Ctrl+Shift+E", action: "FUZZY_SEARCH", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+P", action: "KB_PASSMODE", enabled: true },
@@ -332,6 +334,24 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "shell", trigger: "Ctrl+Shift+Alt+Space", action: "neofetch", linebreak: true, enabled: false }
     ], "", 4));
     signale.info(`Default keymap written to ${shortcutsFile}`);
+} else {
+    // Migrate the pre-3.1 default: Ctrl+Shift+F moved from FUZZY_SEARCH to the
+    // new terminal scrollback search. Only the old default binding is moved -
+    // a user who remapped either key keeps their choice.
+    try {
+        let cuts = JSON.parse(fs.readFileSync(shortcutsFile));
+        const hasTermSearch = cuts.some(c => c.action === "TERMINAL_SEARCH");
+        const owner = cuts.find(c => c.trigger === "Ctrl+Shift+F" && c.action !== "FUZZY_SEARCH");
+        if (!hasTermSearch && !owner) {
+            const fuzzy = cuts.find(c => c.action === "FUZZY_SEARCH" && c.trigger === "Ctrl+Shift+F");
+            if (fuzzy) fuzzy.trigger = "Ctrl+Shift+E";
+            cuts.push({ type: "app", trigger: "Ctrl+Shift+F", action: "TERMINAL_SEARCH", enabled: true });
+            fs.writeFileSync(shortcutsFile, JSON.stringify(cuts, "", 4));
+            signale.info("Migrated Ctrl+Shift+F default: TERMINAL_SEARCH (FUZZY_SEARCH -> Ctrl+Shift+E)");
+        }
+    } catch(e) {
+        signale.warn("shortcuts.json migration skipped: " + e);
+    }
 }
 //Create default window state file
 if(!fs.existsSync(lastWindowStateFile)) {
@@ -561,12 +581,21 @@ app.on('ready', async () => {
             signale.error("TTY spawn denied (Reason: exceeded max TTYs number)");
             e.sender.send("ttyspawn-reply", "ERROR: max number of ttys reached");
         } else {
+            // Optional per-spawn cwd (workspace restore). Only an existing
+            // directory is honored; anything else falls back to the main
+            // terminal's cwd / settings.cwd - never executes anything.
+            let spawnCwd = tty.tty._cwd || settings.cwd;
+            if (arg && typeof arg === "object" && typeof arg.cwd === "string") {
+                try {
+                    if (fs.existsSync(arg.cwd)) spawnCwd = arg.cwd;
+                } catch(e) { /* keep fallback */ }
+            }
             signale.pending(`Creating new TTY process on port ${port}`);
             let term = new Terminal({
                 role: "server",
                 shell: settings.shell,
                 params: settings.shellArgs || '',
-                cwd: tty.tty._cwd || settings.cwd,
+                cwd: spawnCwd,
                 env: cleanEnv,
                 port: port
             });

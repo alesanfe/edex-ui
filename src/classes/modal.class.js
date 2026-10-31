@@ -92,9 +92,15 @@ class Modal {
         tmp.innerHTML = DOMstring;
         let element = tmp.firstChild;
 
-        // Attach button actions as properties - inline handlers are blocked by CSP
-        element.querySelectorAll("button").forEach((btn, i) => {
-            if (typeof buttons[i].action === "function") btn.onclick = buttons[i].action;
+        // Attach button actions as properties - inline handlers are blocked by CSP.
+        // Custom html may embed extra <button>s wired by the caller; the action
+        // bar buttons are always the LAST buttons.length <button>s in DOM order.
+        const allButtons = element.querySelectorAll("button");
+        allButtons.forEach((btn, i) => {
+            const actionIdx = i - (allButtons.length - buttons.length);
+            if (actionIdx >= 0 && typeof buttons[actionIdx].action === "function") {
+                btn.onclick = buttons[actionIdx].action;
+            }
         });
 
         element.addEventListener("mousedown", () => {

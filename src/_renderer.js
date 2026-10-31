@@ -45,11 +45,20 @@ const fontsDir = path.join(settingsDir, "fonts");
 const settingsFile = path.join(settingsDir, "settings.json");
 const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
+const workspacesFile = path.join(settingsDir, "workspaces.json");
 
 // Load config
 window.settings = fs.readJsonSync(settingsFile);
 window.shortcuts = fs.readJsonSync(shortcutsFile);
 window.lastWindowState = fs.readJsonSync(lastWindowStateFile);
+// Workspaces store (EPIC-04): corrupt entries are dropped, never fatal
+window.workspaceStore = fs.existsSync(workspacesFile)
+    ? window.Workspaces.parseStore(fs.readJsonSync(workspacesFile))
+    : {version: window.Workspaces.SCHEMA_VERSION, workspaces: []};
+
+window.writeWorkspacesFile = () => {
+    fs.writeFileSync(workspacesFile, JSON.stringify(window.workspaceStore, "", 4));
+};
 
 // Load CLI parameters
 const args = ipc.invoke("get-cli-args").then(args => {
@@ -634,7 +643,10 @@ window.focusShellTab = number => {
         window.term[number] = null;
 
         document.getElementById("shell_tab" + number).innerHTML = "<p>LOADING...</p>";
-        ipc.send("ttyspawn", "true");
+        // Workspace restore may pass a per-tab cwd via _pendingSpawnCwd
+        const spawnArg = window._pendingSpawnCwd ? {cwd: window._pendingSpawnCwd} : "true";
+        window._pendingSpawnCwd = null;
+        ipc.send("ttyspawn", spawnArg);
         ipc.once("ttyspawn-reply", (e, r) => {
             if (r.startsWith("ERROR")) {
                 document.getElementById("shell_tab" + number).innerHTML = "<p>ERROR</p>";
@@ -1149,6 +1161,9 @@ window.useAppShortcut = action => {
         case "UI_MODE_NEXT":
             window.cycleUIMode();
             return true;
+        case "WORKSPACES":
+            window.openWorkspaces();
+            return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();
             return true;
@@ -1287,6 +1302,209 @@ window.openTermSearch = () => {
     btnNext.addEventListener("click", () => term.searchAddon.findNext(input.value));
     btnClose.addEventListener("click", closeSearch);
     input.focus();
+};
+
+// ================= Workspaces (EPIC-04) =================
+// A workspace captures tab slots + per-tab cwd + uiMode. Restore never runs
+// commands - it spawns shells in the recorded directories only.
+
+// Escape a string for safe interpolation into modal HTML (CSP-safe XSS guard)
+const wsEsc = s => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+window.saveWorkspace = name => {
+    const ws = window.Workspaces.capture(name);
+    const existing = (window.workspaceStore.workspaces || [])
+        .find(w => w.name === ws.name);
+    if (existing) {
+        existing.tabs = ws.tabs;
+        existing.uiMode = ws.uiMode;
+    } else {
+        if (window.workspaceStore.workspaces.length >= window.Workspaces.MAX_WORKSPACES) return;
+        window.workspaceStore.workspaces.push(ws);
+    }
+    window.writeWorkspacesFile();
+};
+
+window.deleteWorkspace = id => {
+    const ws = (window.workspaceStore.workspaces || []).find(w => w.id === id);
+    if (!ws) return;
+    const m = new Modal({
+        type: "custom",
+        title: "Delete workspace",
+        html: `<h5>Delete workspace "${wsEsc(ws.name)}"? Saved tab/directories are lost.</h5>`,
+        buttons: [{label: "DELETE", action: () => {
+            window.workspaceStore.workspaces = window.workspaceStore.workspaces
+                .filter(w => w.id !== id);
+            window.writeWorkspacesFile();
+            m.close();
+            window.openWorkspaces();
+        }}]
+    });
+};
+
+window.renameWorkspace = id => {
+    const ws = (window.workspaceStore.workspaces || []).find(w => w.id === id);
+    if (!ws) return;
+    const m = new Modal({
+        type: "custom",
+        title: "Rename workspace",
+        html: `<input type="text" id="ws_rename_input" value="${wsEsc(ws.name)}" />`,
+        buttons: [{label: "RENAME", action: () => {
+            const v = document.getElementById("ws_rename_input").value.trim();
+            if (v) { ws.name = v.slice(0, 80); window.writeWorkspacesFile(); }
+            m.close();
+            window.openWorkspaces();
+        }}]
+    });
+};
+
+window.duplicateWorkspace = id => {
+    const ws = (window.workspaceStore.workspaces || []).find(w => w.id === id);
+    if (!ws || window.workspaceStore.workspaces.length >= window.Workspaces.MAX_WORKSPACES) return;
+    window.workspaceStore.workspaces.push({
+        ...JSON.parse(JSON.stringify(ws)),
+        id: nanoid(),
+        name: (ws.name + " (copy)").slice(0, 80),
+        createdAt: new Date().toISOString()
+    });
+    window.writeWorkspacesFile();
+    window.openWorkspaces();
+};
+
+window.applyWorkspace = id => {
+    const ws = (window.workspaceStore.workspaces || []).find(w => w.id === id);
+    if (!ws) return;
+    if (ws.uiMode && typeof window.applyUIMode === "function") {
+        window.applyUIMode(ws.uiMode);
+    }
+    (ws.tabs || []).forEach(t => {
+        const slot = Number(t.slot);
+        // Slot 0 is the always-on main shell; occupied slots are untouched
+        if (slot <= 0 || slot > 4) return;
+        if (window.term && window.term[slot]) return;
+        if (t.cwd) window._pendingSpawnCwd = t.cwd;
+        window.focusShellTab(slot);
+    });
+};
+
+window.exportWorkspace = id => {
+    const ws = (window.workspaceStore.workspaces || []).find(w => w.id === id);
+    if (!ws) return;
+    const exportDir = path.join(settingsDir, "workspace-exports");
+    try {
+        fs.mkdirSync(exportDir, {recursive: true});
+        const file = path.join(exportDir, `workspace-${ws.id}.json`);
+        fs.writeFileSync(file, JSON.stringify(
+            {version: window.Workspaces.SCHEMA_VERSION, workspaces: [ws]}, "", 4));
+        new Modal({type: "warning", title: "Workspace exported",
+            message: `Exported "${ws.name}" to ${file}`});
+    } catch (e) {
+        new Modal({type: "warning", title: "Export failed", message: String(e)});
+    }
+};
+
+window.importWorkspaces = () => {
+    const exportDir = path.join(settingsDir, "workspace-exports");
+    let candidates = [];
+    try {
+        candidates = (fs.readdirSync(exportDir) || [])
+            .filter(f => /^workspace-.*\.json$/i.test(f));
+    } catch (e) { /* no exports dir */ }
+    if (!candidates.length) {
+        new Modal({type: "warning", title: "Import workspaces",
+            message: `No workspace-*.json files found in ${exportDir}. Export one first or copy a file there.`});
+        return;
+    }
+    const rows = candidates.map((f, i) =>
+        `<tr><td>${wsEsc(f)}</td><td><button data-ws-import="${i}">IMPORT</button></td></tr>`).join("");
+    const m = new Modal({
+        type: "custom",
+        title: "Import workspaces",
+        html: `<table><tr><th>File</th><th></th></tr>${rows}</table>`,
+        buttons: []
+    });
+    document.getElementById("modal_" + m.id)
+        .querySelectorAll("button[data-ws-import]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const file = path.join(exportDir, candidates[Number(btn.getAttribute("data-ws-import"))]);
+                let raw;
+                try { raw = fs.readFileSync(file).toString(); }
+                catch (e) { new Modal({type: "warning", title: "Import failed", message: String(e)}); return; }
+                const result = window.Workspaces.validateImport(raw, 256 * 1024);
+                if (!result.ok) {
+                    new Modal({type: "warning", title: "Import rejected", message: result.summary});
+                    return;
+                }
+                // Summary before apply (WS-004): confirm merge, never auto-execute
+                const confirm = new Modal({
+                    type: "custom",
+                    title: "Confirm import",
+                    html: `<h5>${wsEsc(result.summary)} from ${wsEsc(path.basename(file))}. No secrets or commands are imported - only names, tab slots, directories and UI mode.</h5>`,
+                    buttons: [{label: "APPLY", action: () => {
+                        result.store.workspaces.forEach(w => {
+                            if (!window.workspaceStore.workspaces.find(x => x.id === w.id)) {
+                                window.workspaceStore.workspaces.push(w);
+                            }
+                        });
+                        window.writeWorkspacesFile();
+                        confirm.close();
+                        m.close();
+                        window.openWorkspaces();
+                    }}]
+                });
+            });
+        });
+};
+
+window.openWorkspaces = () => {
+    const list = window.workspaceStore.workspaces || [];
+    const rows = list.map(w => {
+        const tabs = (w.tabs || []).map(t => `#${t.slot + 1}:${wsEsc(t.cwd || "~")}`).join(" ");
+        return `<tr>
+            <td>${wsEsc(w.name)}</td><td>${tabs || "(no tabs)"}</td><td>${wsEsc(w.uiMode || "-")}</td>
+            <td><button data-ws-act="apply" data-ws-id="${w.id}">APPLY</button>
+                <button data-ws-act="rename" data-ws-id="${w.id}">REN</button>
+                <button data-ws-act="dup" data-ws-id="${w.id}">DUP</button>
+                <button data-ws-act="export" data-ws-id="${w.id}">EXP</button>
+                <button data-ws-act="del" data-ws-id="${w.id}">DEL</button></td>
+        </tr>`;
+    }).join("");
+    const m = new Modal({
+        type: "custom",
+        title: `Workspaces (${list.length})`,
+        html: `<div id="workspaces_panel">
+                <input type="text" id="ws_new_name" placeholder="New workspace name" />
+                <button id="ws_save_btn">SAVE CURRENT</button>
+                <button id="ws_import_btn">IMPORT</button>
+                <table><tr><th>Name</th><th>Tabs (slot:cwd)</th><th>Mode</th><th></th></tr>
+                ${rows || "<tr><td colspan=4>No workspaces saved</td></tr>"}</table>
+            </div>`,
+        buttons: []
+    });
+    const root = document.getElementById("modal_" + m.id);
+    root.querySelector("#ws_save_btn").addEventListener("click", () => {
+        window.saveWorkspace(document.getElementById("ws_new_name").value || "Workspace");
+        m.close();
+        window.openWorkspaces();
+    });
+    root.querySelector("#ws_import_btn").addEventListener("click", () => {
+        m.close();
+        window.importWorkspaces();
+    });
+    root.querySelectorAll("button[data-ws-act]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-ws-id");
+            switch (btn.getAttribute("data-ws-act")) {
+                case "apply": window.applyWorkspace(id); m.close(); break;
+                case "rename": window.renameWorkspace(id); m.close(); break;
+                case "dup": window.duplicateWorkspace(id); m.close(); break;
+                case "export": window.exportWorkspace(id); break;
+                case "del": window.deleteWorkspace(id); m.close(); break;
+            }
+        });
+    });
 };
 
 // Fix #265
