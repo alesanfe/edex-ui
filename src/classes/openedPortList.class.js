@@ -40,6 +40,6 @@ class OpenPortList {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     OpenPortList
 };

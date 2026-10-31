@@ -91,6 +91,6 @@ class DocReader {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     DocReader
 };

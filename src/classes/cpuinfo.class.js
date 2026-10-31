@@ -8,9 +8,7 @@ class Cpuinfo {
         </div>`;
         this.container = document.getElementById("mod_cpuinfo");
 
-        // Init Smoothie
-        let TimeSeries = require("smoothie").TimeSeries;
-        let SmoothieChart = require("smoothie").SmoothieChart;
+        // Init Smoothie (globals from node_modules/smoothie/smoothie.js script tag)
 
         this.series = [];
         this.charts = [];
@@ -185,6 +183,6 @@ class Cpuinfo {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Cpuinfo
 };

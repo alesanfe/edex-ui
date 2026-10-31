@@ -2,9 +2,9 @@ class Sysinfo {
     constructor(parentId) {
         if (!parentId) throw "Missing parameters";
 
-        // See #255
+        // See #255 - local "os" shadows the preload bridge global within this scope
         let os;
-        switch (require("os").platform()) {
+        switch (window.os.platform()) {
             case "darwin":
                 os = "macOS";
                 break;
@@ -12,7 +12,7 @@ class Sysinfo {
                 os = "win";
                 break;
             default:
-                os = require("os").platform();
+                os = window.os.platform();
         }
 
         // Create DOM
@@ -99,7 +99,7 @@ class Sysinfo {
     }
     updateUptime() {
         let uptime = {
-            raw: Math.floor(require("os").uptime()),
+            raw: Math.floor(window.os.uptime()),
             days: 0,
             hours: 0,
             minutes: 0
@@ -134,6 +134,6 @@ class Sysinfo {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Sysinfo
 };

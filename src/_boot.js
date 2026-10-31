@@ -46,6 +46,196 @@ ipc.on("log", (e, type, content) => {
     signale[type](content);
 });
 
+// ---------------------------------------------------------------------------
+// Privileged IPC surface for the context-isolated renderer (src/preload.js).
+// Keep channels narrow and validate inputs; the page cannot reach node or
+// arbitrary ipcRenderer channels - only these handlers.
+// ---------------------------------------------------------------------------
+const os = require("os");
+const { clipboard, screen, globalShortcut } = require("electron");
+
+ipc.on("edex:get-consts", e => {
+    e.returnValue = {
+        platform: process.platform,
+        arch: process.arch,
+        osType: os.type(),
+        osRelease: os.release(),
+        home: os.homedir(),
+        hostname: os.hostname(),
+        username: (() => { try { return os.userInfo().username; } catch (_) { return "user"; } })(),
+        appDir: __dirname,
+        appName: app.getName(),
+        appVersion: app.getVersion(),
+        versions: {
+            app: app.getVersion(),
+            electron: process.versions.electron,
+            node: process.versions.node,
+            chrome: process.versions.chrome
+        },
+        paths: {
+            userData: app.getPath("userData"),
+            home: app.getPath("home"),
+            appData: app.getPath("appData"),
+            documents: app.getPath("documents"),
+            downloads: app.getPath("downloads"),
+            temp: app.getPath("temp"),
+            desktop: app.getPath("desktop")
+        }
+    };
+});
+
+// --- filesystem -------------------------------------------------------------
+function fsSync(handler) {
+    return (e, ...args) => {
+        try { e.returnValue = handler(...args); }
+        catch (err) { e.returnValue = { __err: String(err && err.message || err) }; }
+    };
+}
+ipc.on("edex:fs:readFileSync", fsSync((p, enc) => fs.readFileSync(p, enc)));
+ipc.on("edex:fs:existsSync", fsSync((p) => fs.existsSync(p)));
+ipc.on("edex:fs:writeFileSync", fsSync((p, data, enc) => { fs.writeFileSync(p, data, enc); return null; }));
+ipc.on("edex:fs:statSync", fsSync((p) => {
+    const s = fs.statSync(p);
+    return { _f: s.isFile(), _d: s.isDirectory(), _l: s.isSymbolicLink(),
+             size: s.size, atimeMs: s.atimeMs, mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs };
+}));
+ipc.on("edex:fs:readdirSync", fsSync((p) => fs.readdirSync(p, { withFileTypes: true })
+    .map(d => ({ n: d.name, d: d.isDirectory(), f: d.isFile(), l: d.isSymbolicLink() }))));
+
+ipc.handle("edex:fs:readFile", async (e, p, enc) => fs.promises.readFile(p, enc));
+ipc.handle("edex:fs:writeFile", async (e, p, data, enc) => fs.promises.writeFile(p, data, enc));
+ipc.handle("edex:fs:readdir", async (e, p) => fs.promises.readdir(p));
+ipc.handle("edex:fs:stat", async (e, p) => {
+    const s = await fs.promises.stat(p);
+    return { _f: s.isFile(), _d: s.isDirectory(), _l: s.isSymbolicLink(),
+             size: s.size, atimeMs: s.atimeMs, mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs };
+});
+ipc.handle("edex:fs:lstat", async (e, p) => {
+    const s = await fs.promises.lstat(p);
+    return { _f: s.isFile(), _d: s.isDirectory(), _l: s.isSymbolicLink(),
+             size: s.size, atimeMs: s.atimeMs, mtimeMs: s.mtimeMs, birthtimeMs: s.birthtimeMs };
+});
+
+// fs.watch forwarding (filesystem module live-refresh)
+const fsWatchers = new Map();
+ipc.on("edex:fs:watch", (e, dir) => {
+    if (typeof dir !== "string" || fsWatchers.has(dir)) return;
+    try {
+        const w = fs.watch(dir, (ev, name) => {
+            if (win && !win.isDestroyed()) e.sender.send("edex:fs:watch:" + dir, ev, name && name.toString());
+        });
+        w.on("error", () => {});
+        fsWatchers.set(dir, w);
+    } catch (_) { /* directory may not exist */ }
+});
+ipc.on("edex:fs:unwatch", (e, dir) => {
+    const w = fsWatchers.get(dir);
+    if (w) { try { w.close(); } catch (_) {} fsWatchers.delete(dir); }
+});
+
+// --- clipboard / shell / screen / os ----------------------------------------
+ipc.on("edex:clipboard:readText", e => { e.returnValue = clipboard.readText(); });
+ipc.on("edex:clipboard:writeText", (e, t) => clipboard.writeText(String(t || "")));
+ipc.on("edex:shell:openExternal", (e, u) => {
+    if (typeof u === "string" && /^https?:\/\//i.test(u)) shell.openExternal(u);
+});
+ipc.handle("edex:shell:openPath", (e, p) => shell.openPath(String(p)));
+ipc.on("edex:screen:getAllDisplays", e => { e.returnValue = screen.getAllDisplays(); });
+ipc.on("edex:os:uptime", e => { e.returnValue = os.uptime(); });
+
+// --- app / window controls ---------------------------------------------------
+ipc.on("edex:app:focus", () => { if (win && !win.isDestroyed()) win.focus(); });
+ipc.on("edex:app:relaunch", () => { app.relaunch(); app.exit(0); });
+ipc.on("edex:app:quit", () => app.quit());
+ipc.on("edex:win:minimize", () => { if (win) win.minimize(); });
+ipc.on("edex:win:close", () => { if (win) win.close(); });
+ipc.on("edex:win:focus", () => { if (win) win.focus(); });
+ipc.on("edex:win:setFullScreen", (e, b) => { if (win) win.setFullScreen(!!b); });
+ipc.on("edex:win:isFullScreen", e => { e.returnValue = win ? win.isFullScreen() : false; });
+ipc.on("edex:win:setSize", (e, w, h) => { if (win) win.setSize(Number(w) || 1280, Number(h) || 720); });
+ipc.on("edex:win:toggleDevTools", () => { if (win) win.webContents.toggleDevTools(); });
+
+// --- global shortcuts ---------------------------------------------------------
+ipc.on("edex:gs:register", (e, accel) => {
+    if (typeof accel !== "string") return;
+    try {
+        globalShortcut.register(accel, () => {
+            if (win && !win.isDestroyed()) win.webContents.send("edex:gs:pressed:" + accel);
+        });
+    } catch (_) { /* invalid accelerator */ }
+});
+ipc.on("edex:gs:unregisterAll", () => globalShortcut.unregisterAll());
+
+// --- GeoIP (lazy: downloads MaxMind db on first use) ---------------------------
+let geoReader = null;
+ipc.handle("edex:geo:init", async (e, cacheDir) => {
+    if (geoReader) return true;
+    const geolite2 = require("geolite2-redist");
+    const maxmind = require("maxmind");
+    await geolite2.downloadDbs(cacheDir);
+    geoReader = await geolite2.open("GeoLite2-City", p => maxmind.open(p));
+    return true;
+});
+ipc.on("edex:geo:lookup", (e, ip) => {
+    try { e.returnValue = geoReader ? geoReader.get(ip) : null; }
+    catch (_) { e.returnValue = null; }
+});
+
+// --- raw network primitives for NetStat ---------------------------------------
+// Failures resolve as {__err} - the preload rethrows them page-side, keeping
+// invoke rejections (and their main-process logging) out of the happy path.
+ipc.handle("edex:net:tcpPing", (e, host, port, local) => new Promise((resolve) => {
+    const net = require("net");
+    const start = process.hrtime();
+    const s = new net.Socket();
+    const fail = (err) => { try { s.destroy(); } catch (_) {} resolve({ __err: String(err && err.code || err || "connect failed") }); };
+    s.setTimeout(5000, () => fail("timeout"));
+    s.once("error", fail);
+    s.connect({ port: Number(port), host: String(host), localAddress: String(local), family: 4 }, () => {
+        const t = process.hrtime(start);
+        try { s.destroy(); } catch (_) {}
+        resolve((t[0] * 1e9 + t[1]) / 1e6);
+    });
+}));
+ipc.handle("edex:net:httpsGet", (e, opts) => new Promise((resolve) => {
+    const https = require("https");
+    if (!opts || typeof opts.host !== "string" || typeof opts.path !== "string") return resolve({ __err: "bad options" });
+    const req = https.get({
+        host: opts.host, port: Number(opts.port) || 443, path: opts.path,
+        localAddress: typeof opts.localAddress === "string" ? opts.localAddress : undefined,
+        agent: new https.Agent({ keepAlive: false, maxSockets: 10 })
+    }, res => {
+        let data = "";
+        res.on("data", c => data += c);
+        res.on("end", () => resolve(data));
+    });
+    req.on("error", err => resolve({ __err: String(err && err.code || err) }));
+}));
+
+// --- SQLite database viewer ----------------------------------------------------
+const openDbs = new Map();
+let dbCounter = 0;
+ipc.handle("edex:db:open", (e, p) => new Promise((resolve, reject) => {
+    const sqlite3 = require("sqlite3").verbose();
+    const db = new sqlite3.Database(String(p), err => {
+        if (err) return reject(new Error(String(err.message || err)));
+        const id = "db" + (++dbCounter);
+        openDbs.set(id, db);
+        resolve(id);
+    });
+}));
+ipc.handle("edex:db:all", (e, id, sql) => new Promise((resolve, reject) => {
+    const db = openDbs.get(id);
+    if (!db) return reject(new Error("Database handle not found"));
+    db.all(String(sql), (err, rows) => err ? reject(new Error(String(err.message || err))) : resolve(rows || []));
+}));
+ipc.handle("edex:db:close", (e, id) => new Promise((resolve) => {
+    const db = openDbs.get(id);
+    openDbs.delete(id);
+    if (!db) return resolve(false);
+    db.close(() => resolve(true));
+}));
+
 var win, tty, extraTtys;
 const settingsFile = path.join(electron.app.getPath("userData"), "settings.json");
 const shortcutsFile = path.join(electron.app.getPath("userData"), "shortcuts.json");
@@ -237,15 +427,14 @@ function createWindow(settings) {
         backgroundColor: '#000000',
         webPreferences: {
             devTools: true,
-	    	enableRemoteModule: true,
-            // contextIsolation cannot be enabled while the renderer still
-            // relies on nodeIntegration (Electron drops node globals when
-            // isolation is on). Full isolation requires the preload+IPC
-            // refactor - see SECURITY.md "Known debt".
-            contextIsolation: false,
+            // Full renderer isolation: the page has no node/electron access.
+            // Privileged operations go through src/preload.js -> ipcMain handlers.
+            contextIsolation: true,
+            sandbox: false,
+            preload: path.join(__dirname, "preload.js"),
             backgroundThrottling: false,
             webSecurity: true,
-            nodeIntegration: true,
+            nodeIntegration: false,
             nodeIntegrationInSubFrames: false,
             allowRunningInsecureContent: false,
             navigateOnDragDrop: false,
@@ -253,7 +442,12 @@ function createWindow(settings) {
         }
     });
 
-    enable(win.webContents);
+    // Forward window events the renderer UI listens to
+    ["leave-full-screen", "enter-full-screen", "resize", "unmaximize", "maximize"].forEach(ev => {
+        win.on(ev, () => {
+            if (win && !win.isDestroyed()) win.webContents.send("edex:win:event:" + ev);
+        });
+    });
 
     win.loadURL(url.format({
         pathname: path.join(__dirname, 'ui.html'),

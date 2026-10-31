@@ -2,7 +2,7 @@ class Keyboard {
     constructor(opts) {
         if (!opts.layout || !opts.container) throw "Missing options";
 
-        const layout = JSON.parse(require("fs").readFileSync(opts.layout, {encoding: "utf-8"}));
+        const layout = JSON.parse(fs.readFileSync(opts.layout, {encoding: "utf-8"}));
         this.ctrlseq = ["", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""];
         this.container = document.getElementById(opts.container);
 
@@ -1286,6 +1286,6 @@ class Keyboard {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Keyboard
 };

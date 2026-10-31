@@ -37,6 +37,21 @@
 
         <!-- Load dependency js -->
         <script src="node_modules/pdfjs-dist/build/pdf.mjs" type="module"></script>
+        <!-- Browser shims for former node modules (needs preload globals) -->
+        <script src="assets/misc/deps-shim.js"></script>
+        <script src="assets/misc/xterm-env.js"></script>
+        <!-- xterm.js + addons (UMD bundles -> window globals) -->
+        <script src="node_modules/xterm/lib/xterm.js"></script>
+        <script src="node_modules/xterm-addon-attach/lib/xterm-addon-attach.js"></script>
+        <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
+        <script src="node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
+        <script src="node_modules/xterm-addon-ligatures/lib/xterm-addon-ligatures.js"></script>
+        <script src="assets/misc/xterm-aliases.js"></script>
+        <!-- Other UMD/browser libraries -->
+        <script src="node_modules/smoothie/smoothie.js"></script>
+        <script src="node_modules/howler/dist/howler.min.js"></script>
+        <script src="assets/vendor/encom-globe.js"></script>
+        <script src="assets/misc/file-icons-match.js"></script>
         <!-- Load main modules classes -->
         <script src="classes/modal.class.js"></script>
         <script src="classes/terminal.class.js"></script>

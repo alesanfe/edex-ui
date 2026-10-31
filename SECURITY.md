@@ -39,16 +39,29 @@ with you and credit reporters in release notes unless you prefer anonymity.
   away from the UI is blocked (`will-navigate`), new windows are redirected
   to the system browser, drag-and-drop navigation is disabled, and all web
   permission requests (geolocation, media, notifications, ...) are denied.
-- **Known debt:** the renderer still runs with `nodeIntegration: true` /
-  `contextIsolation: false`, required by the current architecture
-  (`@electron/remote`, direct `require()` in ~20 renderer class files).
-  Electron cannot keep `nodeIntegration` enabled under `contextIsolation`
-  (the page loses the node globals), so isolation requires rewriting every
-  synchronous native call (`fs`, `sqlite3`, `xterm`, `child_process`) into
-  an async preload/IPC bridge — a deep refactor tracked as future work.
-  Until then, the strict CSP + navigation lockdown are the defense-in-depth
-  layers against XSS-to-RCE escalation; never load remote content in the
-  main window.
+- **Renderer isolation:** the window runs with `contextIsolation: true` and
+  `nodeIntegration: false`. The page has no `require`, `process`, `fs`,
+  `ipcRenderer`, or `@electron/remote` access. A preload bridge
+  (`src/preload.js`) exposes narrow shims under the same global names the
+  renderer used before (`fs`, `path`, `os`, `electron`, `remote`,
+  `electronWin`, `ipc`, `edex`); every privileged operation — filesystem,
+  window control, clipboard, global shortcuts, display enumeration, GeoIP,
+  SQLite, raw TCP/HTTPS probes — executes in the main process behind the
+  `edex:*` IPC handlers registered in `src/_boot.js`. `openExternal` only
+  accepts `https?://` URLs, and `globalShortcut` registration is forwarded
+  to the main process. There is no generic code-exec channel: IPC surface =
+  the whitelisted handler list.
+- **UI dependencies:** npm libraries used by the renderer load as UMD
+  `<script>` bundles (xterm, smoothie, howler, encom-globe) or as local
+  shims (`assets/misc/deps-shim.js`: `path`, `nanoid`, `pretty-bytes`,
+  `mime-types`, `color`) — no `node_modules` resolution inside the page.
+- **Defense in depth on top of isolation:** strict `script-src file:` CSP
+  forbids inline handlers and injected scripts (all UI handlers assigned
+  via JavaScript), `eval()` is disabled at boot, `will-navigate` blocks
+  leaving the UI, new windows go to the system browser, drag-and-drop
+  navigation is disabled, `navigateOnDragDrop: false`, and all web
+  permission requests are denied. Never load remote content in the main
+  window.
 - **Accepted residual advisories:** `npm audit` reports moderate findings
   (`minimatch`/`glob`/`rimraf` chains) inside install/packaging-time tooling:
   `geolite2-redist`'s GeoIP downloader (invoked with globbing disabled) and

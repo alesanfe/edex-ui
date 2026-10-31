@@ -16,12 +16,10 @@ class Conninfo {
 
         this.current = document.querySelector("#mod_conninfo_innercontainer > h1 > i");
         this.total = document.querySelector("#mod_conninfo_innercontainer > h2 > i");
-        let prettyBytes = require("pretty-bytes");
-        this._pb = prettyBytes.default || prettyBytes;
+        // prettyBytes and Smoothie globals come from deps-shim.js / smoothie.js
+        this._pb = prettyBytes;
 
         // Init Smoothie
-        let TimeSeries = require("smoothie").TimeSeries;
-        let SmoothieChart = require("smoothie").SmoothieChart;
 
         // Set chart options
         let chartOptions = [{
@@ -92,6 +90,6 @@ class Conninfo {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Conninfo
 };

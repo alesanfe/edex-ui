@@ -1,24 +1,9 @@
-let sqlite = null;
-try {
-    sqlite = require("sqlite3").verbose();
-} catch(e) {
-    console.warn("sqlite3 module is not available:", e);
-}
-
+// The sqlite3 native module lives in the main process; the renderer talks to
+// it through the edex.db bridge exposed by the preload script.
 class SqliteInterface {
     constructor(path) {
-        if (sqlite === null) {
-            window.keyboard.attach();
-            new Modal({
-                type: "error",
-                title: "SQLite support unavailable",
-                message: "The sqlite3 native module is not installed. Reinstall eDEX-UI dependencies to enable the database browser."
-            });
-            return;
-        }
-
         this.history = [];
-        this.db = new sqlite.Database(path);
+        this.db = null;
         this.results = document.getElementById("sqlite_results");
         const tableList = document.getElementById("sqlite_tables");
         const runButton = document.getElementById("sqlite_run");
@@ -37,23 +22,42 @@ class SqliteInterface {
             }
         });
 
-        this.db.each("SELECT name FROM sqlite_master WHERE type = \"table\"", (err, row) => {
-            if (err) {
-                console.log(err);
-            } else {
-                const el = document.createElement("li");
-                el.textContent = row.name;
-                el.classList.add("clickable");
-                tableList.appendChild(el);
-                el.addEventListener("click", () => {
-                    this.execute(`SELECT * FROM ${row.name};`);
-                });
-            }
+        edex.db.open(path).then(id => {
+            // Keep the sqlite3 "each" semantics on top of the batched "all" bridge
+            this.db = {
+                each: (sql, cb) => {
+                    edex.db.all(id, sql).then(rows => {
+                        rows.forEach(r => cb(null, r));
+                    }).catch(err => cb(err));
+                },
+                close: () => edex.db.close(id)
+            };
+            this.db.each("SELECT name FROM sqlite_master WHERE type = \"table\"", (err, row) => {
+                if (err) {
+                    console.log(err);
+                } else {
+                    const el = document.createElement("li");
+                    el.textContent = row.name;
+                    el.classList.add("clickable");
+                    tableList.appendChild(el);
+                    el.addEventListener("click", () => {
+                        this.execute(`SELECT * FROM ${row.name};`);
+                    });
+                }
+            });
+        }).catch(e => {
+            window.keyboard.attach();
+            new Modal({
+                type: "error",
+                title: "SQLite unavailable",
+                message: "Could not open this database: " + (e && e.message || e)
+            });
         });
         query.focus();
     }
 
     execute(sql) {
+        if (!this.db) return;
         this.clearResults();
         this.db.each(sql, this.showResults);
         this.addToHistory(sql);
@@ -123,6 +127,6 @@ class SqliteInterface {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     SqliteInterface
 };

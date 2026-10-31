@@ -1,5 +1,5 @@
 // Disable eval()
-window.eval = global.eval = function () {
+window.eval = function () {
     throw new Error("eval() is disabled for security reasons.");
 };
 // Security helper :)
@@ -34,11 +34,9 @@ window.onerror = (msg, path, line, col, error) => {
     document.getElementById("boot_screen").innerHTML += `${error} :  ${msg}<br/>==> at ${path}  ${line}:${col}`;
 };
 
-const path = require("path");
-const fs = require("fs");
-const electron = require("electron");
-const remote = require("@electron/remote");
-const ipc = electron.ipcRenderer;
+// fs, path, electron, remote, os, process, __dirname, edex and ipc are lexical
+// globals injected by the preload bridge (src/preload.js) - no node
+// integration in this context. Do not redeclare them at top level.
 
 const settingsDir = remote.app.getPath("userData");
 const themesDir = path.join(settingsDir, "themes");
@@ -49,9 +47,9 @@ const shortcutsFile = path.join(settingsDir, "shortcuts.json");
 const lastWindowStateFile = path.join(settingsDir, "lastWindowState.json");
 
 // Load config
-window.settings = require(settingsFile);
-window.shortcuts = require(shortcutsFile);
-window.lastWindowState = require(lastWindowStateFile);
+window.settings = fs.readJsonSync(settingsFile);
+window.shortcuts = fs.readJsonSync(shortcutsFile);
+window.lastWindowState = fs.readJsonSync(lastWindowStateFile);
 
 // Load CLI parameters
 const args = ipc.invoke("get-cli-args").then(args => {
@@ -73,9 +71,9 @@ ipc.once("getThemeOverride", (e, theme) => {
     if (theme !== null) {
         window.settings.theme = theme;
         window.settings.nointroOverride = true;
-        _loadTheme(require(path.join(themesDir, window.settings.theme + ".json")));
+        _loadTheme(fs.readJsonSync(path.join(themesDir, window.settings.theme + ".json")));
     } else {
-        _loadTheme(require(path.join(themesDir, window.settings.theme + ".json")));
+        _loadTheme(fs.readJsonSync(path.join(themesDir, window.settings.theme + ".json")));
     }
 });
 ipc.send("getThemeOverride");
@@ -179,7 +177,7 @@ function waitForFonts() {
 
 // A proxy function used to add multithreading to systeminformation calls - see backend process manager @ _multithread.js
 function initSystemInformationProxy() {
-    const { nanoid } = require("nanoid/non-secure");
+    const nanoid = nanoidNonSecure;
 
     window.si = new Proxy({}, {
         apply: () => { throw new Error("Cannot use sysinfo proxy directly as a function") },
@@ -241,7 +239,7 @@ function displayLine() {
     let log = fs.readFileSync(path.join(__dirname, "assets", "misc", "boot_log.txt")).toString().split('\n');
 
     function isArchUser() {
-        return require("os").platform() === "linux"
+        return os.platform() === "linux"
             && fs.existsSync("/etc/os-release")
             && fs.readFileSync("/etc/os-release").toString().includes("arch");
     }
@@ -352,7 +350,7 @@ async function getDisplayName() {
         return user;
 
     try {
-        user = await require("username").username();
+        user = edex.username;
     } catch (e) { }
 
     return user;
@@ -360,6 +358,16 @@ async function getDisplayName() {
 
 // Create the UI's html structure and initialize the terminal client and the keyboard
 async function initUI() {
+    // JSON assets that were previously require()d - loaded via fetch now
+    if (!window.fileIcons || !window.gridJson) {
+        let [icons, grid] = await Promise.all([
+            fetch("assets/icons/file-icons.json").then(r => r.json()),
+            fetch("assets/misc/grid.json").then(r => r.json())
+        ]);
+        window.fileIcons = icons;
+        window.gridJson = grid;
+    }
+
     document.body.innerHTML += `<section class="mod_column" id="mod_column_left">
         <h3 class="title"><p>PANEL</p><p>SYSTEM</p></h3>
     </section>
@@ -1172,7 +1180,7 @@ document.addEventListener("keydown", e => {
 
 // Fix #265
 window.addEventListener("keyup", e => {
-    if (require("os").platform() === "win32" && e.key === "F4" && e.altKey === true) {
+    if (os.platform() === "win32" && e.key === "F4" && e.altKey === true) {
         remote.app.quit();
     }
 });
@@ -1191,7 +1199,7 @@ window.onresize = () => {
 
 // See #413
 window.resizeTimeout = null;
-let electronWin = remote.getCurrentWindow();
+electronWin = remote.getCurrentWindow();
 electronWin.on("resize", () => {
     if (settings.keepGeometry === false) return;
     clearTimeout(window.resizeTimeout);

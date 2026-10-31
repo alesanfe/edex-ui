@@ -3,12 +3,13 @@ class Terminal {
         if (opts.role === "client") {
             if (!opts.parentId) throw "Missing options";
 
-            this.xTerm = require("xterm").Terminal;
-            const {AttachAddon} = require("xterm-addon-attach");
-            const {FitAddon} = require("xterm-addon-fit");
-            const {LigaturesAddon} = require("xterm-addon-ligatures");
-            const {WebglAddon} = require("xterm-addon-webgl");
-            this.Ipc = require("electron").ipcRenderer;
+            // UMD bundles loaded via <script> in ui.html expose these globals
+            this.xTerm = window.Terminal;
+            const AttachAddon = window.AttachAddon;
+            const FitAddon = window.FitAddon;
+            const LigaturesAddon = window.LigaturesAddon;
+            const WebglAddon = window.WebglAddon;
+            this.Ipc = electron.ipcRenderer;
 
             this.port = opts.port || 3000;
             this.cwd = "";
@@ -72,8 +73,7 @@ class Terminal {
                 });
             }
 
-            let colorModule = require("color");
-            let color = colorModule.default || colorModule.Color || colorModule;
+            // "color" is provided as a global by assets/misc/deps-shim.js
             let colorify;
             if (doCustomFilter) {
                 colorify = (base, target) => {
@@ -140,9 +140,18 @@ class Terminal {
             let fitAddon = new FitAddon();
             this.term.loadAddon(fitAddon);
             this.term.open(document.getElementById(opts.parentId));
-            this.term.loadAddon(new WebglAddon());
-            let ligaturesAddon = new LigaturesAddon();
-            this.term.loadAddon(ligaturesAddon);
+            try {
+                this.term.loadAddon(new WebglAddon());
+            } catch(e) {
+                console.warn("WebGL addon unavailable, using canvas renderer:", e);
+            }
+            if (typeof LigaturesAddon === "function") {
+                try {
+                    this.term.loadAddon(new LigaturesAddon());
+                } catch(e) {
+                    console.warn("Ligatures addon unavailable:", e);
+                }
+            }
             this.term.attachCustomKeyEventHandler(e => {
                 window.keyboard.keydownHandler(e);
                 return true;
@@ -526,6 +535,6 @@ class Terminal {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Terminal
 };

@@ -241,6 +241,6 @@ class Toplist {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     Toplist
 };

@@ -2,14 +2,13 @@ class FilesystemDisplay {
     constructor(opts) {
         if (!opts.parentId) throw "Missing options";
 
-        const fs = require("fs");
-        const path = require("path");
+        // "fs"/"path" globals come from the preload bridge and deps-shim
         this.cwd = [];
         this.cwd_path = null;
         this.iconcolor = `rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b})`;
         this._formatBytes = (a,b) => {if(0==a)return"0 Bytes";var c=1024,d=b||2,e=["Bytes","KB","MB","GB","TB","PB","EB","ZB","YB"],f=Math.floor(Math.log(a)/Math.log(c));return parseFloat((a/Math.pow(c,f)).toFixed(d))+" "+e[f]};
-        this.fileIconsMatcher = require("./assets/misc/file-icons-match.js");
-        this.icons = require("./assets/icons/file-icons.json");
+        this.fileIconsMatcher = window.matchIcon;
+        this.icons = window.fileIcons;
         // Icon names that may legitimately apply to directories (matched on the whole name,
         // not on a file extension) - see #1167
         this._dirIcons = new Set([
@@ -76,24 +75,12 @@ class FilesystemDisplay {
             }
         }, 1000);
 
-        this._asyncFSwrapper = new Proxy(fs, {
-            get: function(fs, prop) {
-                if (prop in fs) {
-                    return function(...args) {
-                        return new Promise((resolve, reject) => {
-                            fs[prop](...args, (err, d) => {
-                                if (typeof err !== "undefined" && err !== null) reject(err);
-                                if (typeof d !== "undefined") resolve(d);
-                                if (typeof d === "undefined" && typeof err === "undefined") resolve();
-                            });
-                        });
-                    }
-                }
-            },
-            set: function() {
-                return false;
-            }
-        });
+        // The fs global is a contextBridge-exposed shim and cannot be wrapped
+        // in a Proxy - use an explicit promise wrapper over its callback API.
+        this._asyncFSwrapper = {
+            readdir: p => new Promise((resolve, reject) => fs.readdir(p, (err, d) => err ? reject(err) : resolve(d))),
+            lstat: p => new Promise((resolve, reject) => fs.lstat(p, (err, d) => err ? reject(err) : resolve(d)))
+        };
 
         this.setFailedState = () => {
             this.failed = true;
@@ -578,7 +565,7 @@ class FilesystemDisplay {
                 name = block.name;
             }
 
-            let mime = require("mime-types");
+            // "mime" global is provided by deps-shim.js
 
             block.path = block.path.replace(/\\/g, "/");
 
@@ -787,6 +774,6 @@ class FilesystemDisplay {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     FilesystemDisplay
 };

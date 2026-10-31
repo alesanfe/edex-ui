@@ -2413,4 +2413,5 @@ function matchIcon(filename) {
     if (/\.zil$/i.test(filename)) { return "zork"; }
     if (/\.mud$/i.test(filename)) { return "zork"; }
 }
-module.exports = matchIcon;
+if (typeof module !== "undefined") module.exports = matchIcon;
+if (typeof window !== "undefined") window.matchIcon = matchIcon;

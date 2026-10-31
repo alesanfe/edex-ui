@@ -1,7 +1,6 @@
 class UpdateChecker {
     constructor() {
-        let electron = require("electron");
-        let remote = require("@electron/remote");
+        // "electron" and "remote" globals are provided by the preload bridge
         let current = remote.app.getVersion();
 
         this._failed = false;
@@ -42,7 +41,7 @@ class UpdateChecker {
                                 message: `xDEX-UI <strong>${release.tag_name}</strong> is now available.<br/>Head over to <a href="#" id="updateChecker_dl">github.com</a> to download the latest version.`
                             });
                             document.getElementById("updateChecker_dl").onclick = () => {
-                                require("electron").shell.openExternal(release.html_url);
+                                electron.shell.openExternal(release.html_url);
                                 return false;
                             };
                             electron.ipcRenderer.send("log", "info", `UpdateChecker: New version ${release.tag_name} available.`);
@@ -58,6 +57,6 @@ class UpdateChecker {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     UpdateChecker
 };

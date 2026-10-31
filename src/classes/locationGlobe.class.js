@@ -2,10 +2,8 @@ class LocationGlobe {
     constructor(parentId) {
         if (!parentId) throw "Missing parameters";
 
-        const path = require("path");
-
-        this._geodata = require(path.join(__dirname, "assets/misc/grid.json"));
-        require(path.join(__dirname, "assets/vendor/encom-globe.js"));
+        // encom-globe.js and grid.json are loaded globally (script tag + fetch in _renderer)
+        this._geodata = window.gridJson;
         this.ENCOM = window.ENCOM;
 
         // Create DOM and include lib
@@ -236,6 +234,6 @@ class LocationGlobe {
     }
 }
 
-module.exports = {
+if (typeof module !== "undefined") module.exports = {
     LocationGlobe
 };
