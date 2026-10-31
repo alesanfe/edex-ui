@@ -3,6 +3,41 @@
 All notable changes to xDEX-UI are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0]
+
+### Added
+
+- Monitor widgets: `tempinfo` (CPU/GPU temperatures via si.cpuTemperature),
+  `diskinfo` (si.fsSize + si.diskLayout) and `dockinfo` (Docker containers via
+  si.docker*, plus the kubectl context when `kubectl` is on PATH via the
+  whitelisted `edex:probe` channel).
+- `nettopo`: canvas network-topology view grouping connections by remote host.
+- SSH profiles: `tmuxSession` option — `tmux new -A -s <name>` attach-or-create
+  after the remote `cd`.
+- Terminal command blocks via OSC-133 shell-integration markers with
+  block-to-block scroll navigation.
+- Configurable post-effects: scanlines/glow/flicker intensity (0-100) with
+  reduced-motion honoring (`postfx.js`).
+- Declarative plugin system (`plugins.js`): JSON-only manifests under
+  `<userData>/plugins`, whitelisted metrics/fields, no arbitrary code.
+- Opt-in local-first AI assistant (`ai-assistant.js`): every request goes
+  through `edex:ai:chat` — endpoint protocol validation, 32 KiB prompt cap,
+  30s timeout, secret redaction before anything leaves the machine.
+- Linux Wayland auto-detect: `ozone-platform-hint=auto` +
+  `WaylandWindowDecorations` when `XDG_SESSION_TYPE=wayland`.
+- `npm run test:unit` / `npm run test:e2e` scripts.
+
+### Fixed
+
+- `applyUIMode` stashes `_pendingPaused` when a widget is toggled off before
+  its async `initPausable` arms, so hidden widgets no longer keep polling.
+
+### Tests / CI
+
+- 57 unit/module tests (~86% line coverage on pure modules) + 10 E2E tests
+  driven through `webContents.executeJavaScript` (CSP- and eval-shim-safe).
+- New `test` workflow job gates every build; releases now require it.
+
 ## [3.0.1]
 
 ### Fixed
