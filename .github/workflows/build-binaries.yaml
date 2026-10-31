@@ -33,9 +33,9 @@ jobs:
     - name: Run prebuild script
       run: npm run prebuild-linux
     - name: Build for x64
-      run: ./node_modules/.bin/electron-builder build -l --x64
+      run: ./node_modules/.bin/electron-builder build -l --x64 -p never
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-AppImages
@@ -70,10 +70,10 @@ jobs:
     - name: Build for armv7l
       run: |
         docker run --rm --platform linux/arm/v7 \
-          -e GH_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+          -e DEBUG=electron-builder \
           -v "$PWD":/work -w /work \
           node:20-bullseye \
-          bash -lc "npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l"
+          bash -lc "npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-armv7l-AppImage
@@ -107,10 +107,10 @@ jobs:
     - name: Build for arm64
       run: |
         docker run --rm --platform linux/arm64 \
-          -e GH_TOKEN=${{ secrets.GITHUB_TOKEN }} \
+          -e DEBUG=electron-builder \
           -v "$PWD":/work -w /work \
           node:20-bullseye \
-          bash -lc "npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --arm64"
+          bash -lc "npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --arm64 -p never"
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-arm64-AppImage
@@ -138,7 +138,7 @@ jobs:
     - name: npm build
       run: npm run build-windows
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
         # Code signing activates automatically when these secrets are configured
         CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
         CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
@@ -175,7 +175,7 @@ jobs:
     - name: npm build
       run: npm run build-darwin
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DEBUG: electron-builder
         # macOS signing + notarization activate when these secrets are configured
         CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
         CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
