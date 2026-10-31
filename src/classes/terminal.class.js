@@ -7,6 +7,8 @@ class Terminal {
             this.xTerm = window.Terminal;
             const AttachAddon = window.AttachAddon;
             const FitAddon = window.FitAddon;
+            const SearchAddon = window.SearchAddon;
+            const WebLinksAddon = window.WebLinksAddon;
             const LigaturesAddon = window.LigaturesAddon;
             const WebglAddon = window.WebglAddon;
             this.Ipc = electron.ipcRenderer;
@@ -98,6 +100,14 @@ class Terminal {
 
             let themeColor = `rgb(${window.theme.r}, ${window.theme.g}, ${window.theme.b})`;
 
+            // Web links + OSC-8 hyperlinks: only http/https, always through the
+            // main process' openExternal (never inside the sandboxed renderer)
+            const openLink = (event, uri) => {
+                if (typeof uri === "string" && /^https?:\/\//i.test(uri)) {
+                    electron.shell.openExternal(uri);
+                }
+            };
+
             this.term = new this.xTerm({
                 allowProposedApi: true,
                 cols: 80,
@@ -111,8 +121,9 @@ class Terminal {
                 fontWeightBold: window.theme.terminal.fontWeightBold || "bold",
                 letterSpacing: window.theme.terminal.letterSpacing || 0,
                 lineHeight: window.theme.terminal.lineHeight || 1,
-                scrollback: 1500,
+                scrollback: Math.max(500, Math.min(Number(window.settings.termScrollback) || 5000, 50000)),
                 bellStyle: "none",
+                linkHandler: {activate: openLink},
                 theme: {
                     foreground: window.theme.terminal.foreground,
                     background: window.theme.terminal.background,
@@ -151,6 +162,16 @@ class Terminal {
                 } catch(e) {
                     console.warn("Ligatures addon unavailable:", e);
                 }
+            }
+
+            // Search addon (TERM-003) - UI lives in _renderer.js (Ctrl+Shift+F)
+            if (typeof SearchAddon === "function") {
+                this.searchAddon = new SearchAddon();
+                this.term.loadAddon(this.searchAddon);
+            }
+
+            if (typeof WebLinksAddon === "function") {
+                this.term.loadAddon(new WebLinksAddon(openLink));
             }
             this.term.attachCustomKeyEventHandler(e => {
                 window.keyboard.keydownHandler(e);

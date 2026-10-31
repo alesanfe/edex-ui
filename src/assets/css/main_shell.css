@@ -212,3 +212,43 @@ div#main_shell_innercontainer pre#terminal4 {
 .xterm:not(.enable-mouse-events) {
     cursor: text;
 }
+
+/* Terminal scrollback search bar (TERM-003) */
+#term_search {
+    position: absolute;
+    top: 8%;
+    right: 5%;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(10, 20, 30, 0.9);
+    border: 1px solid #2f6f8f;
+    border-radius: 3px;
+}
+
+#term_search input {
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid #2f6f8f;
+    color: #9fdcef;
+    font-family: "Fira Mono", monospace;
+    font-size: 13px;
+    padding: 4px 8px;
+    width: 240px;
+    outline: none;
+}
+
+#term_search button {
+    background: rgba(47, 111, 143, 0.4);
+    border: 1px solid #2f6f8f;
+    color: #9fdcef;
+    font-family: "Fira Mono", monospace;
+    font-size: 12px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+
+#term_search button:hover {
+    background: rgba(47, 111, 143, 0.8);
+}

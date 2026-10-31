@@ -40,12 +40,14 @@
         <!-- Browser shims for former node modules (needs preload globals) -->
         <script src="assets/misc/deps-shim.js"></script>
         <script src="assets/misc/xterm-env.js"></script>
-        <!-- xterm.js + addons (UMD bundles -> window globals) -->
-        <script src="node_modules/xterm/lib/xterm.js"></script>
-        <script src="node_modules/xterm-addon-attach/lib/xterm-addon-attach.js"></script>
-        <script src="node_modules/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-        <script src="node_modules/xterm-addon-webgl/lib/xterm-addon-webgl.js"></script>
-        <script src="node_modules/xterm-addon-ligatures/lib/xterm-addon-ligatures.js"></script>
+        <!-- xterm.js 5.x + addons (UMD bundles -> window globals) -->
+        <script src="node_modules/@xterm/xterm/lib/xterm.js"></script>
+        <script src="node_modules/@xterm/addon-attach/lib/addon-attach.js"></script>
+        <script src="node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+        <script src="node_modules/@xterm/addon-search/lib/addon-search.js"></script>
+        <script src="node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+        <script src="node_modules/@xterm/addon-webgl/lib/addon-webgl.js"></script>
+        <script src="assets/misc/ligatures-loader.mjs" type="module"></script>
         <script src="assets/misc/xterm-aliases.js"></script>
         <!-- Other UMD/browser libraries -->
         <script src="node_modules/smoothie/smoothie.js"></script>

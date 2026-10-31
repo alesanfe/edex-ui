@@ -53,7 +53,6 @@ window.lastWindowState = fs.readJsonSync(lastWindowStateFile);
 
 // Load CLI parameters
 const args = ipc.invoke("get-cli-args").then(args => {
-    console.log(args);
     if (args.includes("--nointro")) {
         window.settings.nointroOverride = true;
     } else {
@@ -733,6 +732,11 @@ window.openSettings = async () => {
                         <td><input type="number" id="settingsEditor-termFontSize" value="${window.settings.termFontSize}"></td>
                     </tr>
                     <tr>
+                        <td>termScrollback</td>
+                        <td>Terminal scrollback buffer lines (500 - 50000, applies to new terminals)</td>
+                        <td><input type="number" id="settingsEditor-termScrollback" value="${window.settings.termScrollback || 5000}"></td>
+                    </tr>
+                    <tr>
                         <td>audio</td>
                         <td>Activate audio sound effects</td>
                         <td><select id="settingsEditor-audio">
@@ -902,6 +906,7 @@ window.writeSettingsFile = () => {
         keyboard: document.getElementById("settingsEditor-keyboard").value,
         theme: document.getElementById("settingsEditor-theme").value,
         termFontSize: Number(document.getElementById("settingsEditor-termFontSize").value),
+        termScrollback: Number(document.getElementById("settingsEditor-termScrollback").value) || 5000,
         audio: (document.getElementById("settingsEditor-audio").value === "true"),
         audioVolume: Number(document.getElementById("settingsEditor-audioVolume").value),
         disableFeedbackAudio: (document.getElementById("settingsEditor-disableFeedbackAudio").value === "true"),
@@ -1097,6 +1102,9 @@ window.useAppShortcut = action => {
         case "FUZZY_SEARCH":
             window.activeFuzzyFinder = new FuzzyFinder();
             return true;
+        case "TERMINAL_SEARCH":
+            window.openTermSearch();
+            return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();
             return true;
@@ -1176,7 +1184,66 @@ document.addEventListener("keydown", e => {
     if (e.code === "KeyA" && e.ctrlKey) {
         e.preventDefault();
     }
+    if (e.code === "KeyF" && e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        window.openTermSearch();
+    }
 });
+
+// Terminal scrollback search (TERM-003): floating bar driven by xterm SearchAddon
+window.openTermSearch = () => {
+    const term = window.term && window.term[window.currentTerm];
+    if (!term || !term.searchAddon) return;
+    const existing = document.getElementById("term_search");
+    if (existing) {
+        document.getElementById("term_search_input").focus();
+        return;
+    }
+    const bar = document.createElement("div");
+    bar.id = "term_search";
+    const input = document.createElement("input");
+    input.id = "term_search_input";
+    input.type = "text";
+    input.placeholder = "Search terminal scrollback...";
+    const btnPrev = document.createElement("button");
+    btnPrev.textContent = "Prev";
+    const btnNext = document.createElement("button");
+    btnNext.textContent = "Next";
+    const btnClose = document.createElement("button");
+    btnClose.textContent = "Close";
+    bar.appendChild(input);
+    bar.appendChild(btnPrev);
+    bar.appendChild(btnNext);
+    bar.appendChild(btnClose);
+    document.body.appendChild(bar);
+
+    const closeSearch = () => {
+        if (typeof term.searchAddon.clearDecorations === "function") {
+            term.searchAddon.clearDecorations();
+        }
+        bar.remove();
+        window.keyboard.attach();
+        term.term.focus();
+    };
+    window.keyboard.detach();
+    input.addEventListener("input", () => {
+        if (input.value) term.searchAddon.findNext(input.value, {incremental: true});
+    });
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter" && e.shiftKey) {
+            term.searchAddon.findPrevious(input.value);
+        } else if (e.key === "Enter") {
+            term.searchAddon.findNext(input.value);
+        } else if (e.key === "Escape") {
+            closeSearch();
+        }
+        e.stopPropagation();
+    });
+    btnPrev.addEventListener("click", () => term.searchAddon.findPrevious(input.value));
+    btnNext.addEventListener("click", () => term.searchAddon.findNext(input.value));
+    btnClose.addEventListener("click", closeSearch);
+    input.focus();
+};
 
 // Fix #265
 window.addEventListener("keyup", e => {

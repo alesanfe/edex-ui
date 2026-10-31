@@ -275,6 +275,7 @@ if (!fs.existsSync(settingsFile)) {
         keyboard: "en-US",
         theme: "tron",
         termFontSize: 15,
+        termScrollback: 5000,
         audio: true,
         audioVolume: 1.0,
         disableFeedbackAudio: false,
