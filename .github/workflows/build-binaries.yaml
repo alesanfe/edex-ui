@@ -16,7 +16,7 @@ jobs:
     - name: Unit and module tests
       run: npm run test:unit
     - name: Install E2E runtime (xvfb + electron libs)
-      run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgtk-3-0 libgbm1 libnss3 libasound2 >/dev/null
+      run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgtk-3-0 libgbm1 libnss3 libasound2t64 >/dev/null
     - name: E2E tests
       run: xvfb-run -a npm run test:e2e
       timeout-minutes: 8
