@@ -213,6 +213,8 @@ jobs:
         cd artifacts
         sha256sum * > SHA256SUMS.txt
         cat SHA256SUMS.txt
+    - name: Install deps for SBOM
+      run: npm ci --ignore-scripts --no-audit --no-fund
     - name: Generate SBOM
       run: |
         npm sbom --sbom-format cyclonedx --omit=dev > artifacts/sbom.cyclonedx.json
