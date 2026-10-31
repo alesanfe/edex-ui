@@ -76,7 +76,7 @@ jobs:
           -e DEBUG=electron-builder \
           -e USE_SYSTEM_7ZA=true \
           -v "$PWD":/work -w /work \
-          node:20-bullseye \
+          node:20-bookworm \
           bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 p7zip-full >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
     - uses: actions/upload-artifact@v4
       with:
@@ -113,7 +113,7 @@ jobs:
         docker run --rm --platform linux/arm64 \
           -e DEBUG=electron-builder \
           -v "$PWD":/work -w /work \
-          node:20-bullseye \
+          node:20-bookworm \
           bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --arm64 -p never"
     - uses: actions/upload-artifact@v4
       with:
