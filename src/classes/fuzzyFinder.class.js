@@ -18,7 +18,7 @@ class FuzzyFinder {
                     <li></li>
                 </ul>`,
             buttons: [
-                {label: "Select", action: "window.activeFuzzyFinder.submit()"}
+                {label: "Select", action: () => window.activeFuzzyFinder.submit()}
             ]
         }, () => {
             delete window.activeFuzzyFinder;
@@ -107,7 +107,7 @@ class FuzzyFinder {
          }
          let html = "";
          results.forEach((file, i) => {
-             html += `<li id="fuzzyFinderMatch-${i}" class="${(i === 0) ? 'fuzzyFinderMatchSelected' : ''}" onclick="document.querySelector('li.fuzzyFinderMatchSelected').removeAttribute('class');document.getElementById('fuzzyFinderMatch-${i}').setAttribute('class', 'fuzzyFinderMatchSelected')">${file.name}</li>`;
+             html += `<li id="fuzzyFinderMatch-${i}" class="${(i === 0) ? 'fuzzyFinderMatchSelected' : ''}">${file.name}</li>`;
         });
         if (results.length !== 5) {
             for (let i = results.length; i < 5; i++) {
@@ -115,6 +115,13 @@ class FuzzyFinder {
             }
         }
         this.results.innerHTML = html;
+        // Attach selection handlers - inline handlers are blocked by the CSP
+        this.results.querySelectorAll("li[id^='fuzzyFinderMatch-']").forEach(li => {
+            li.onclick = () => {
+                document.querySelector('li.fuzzyFinderMatchSelected').removeAttribute('class');
+                li.setAttribute('class', 'fuzzyFinderMatchSelected');
+            };
+        });
       }
       submit() {
          let file = document.querySelector("li.fuzzyFinderMatchSelected").innerText;

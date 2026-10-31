@@ -39,8 +39,12 @@ class UpdateChecker {
                             new Modal({
                                 type: "info",
                                 title: "New version available",
-                                message: `xDEX-UI <strong>${release.tag_name}</strong> is now available.<br/>Head over to <a href="#" onclick="require('electron').shell.openExternal('${release.html_url}')">github.com</a> to download the latest version.`
+                                message: `xDEX-UI <strong>${release.tag_name}</strong> is now available.<br/>Head over to <a href="#" id="updateChecker_dl">github.com</a> to download the latest version.`
                             });
+                            document.getElementById("updateChecker_dl").onclick = () => {
+                                require("electron").shell.openExternal(release.html_url);
+                                return false;
+                            };
                             electron.ipcRenderer.send("log", "info", `UpdateChecker: New version ${release.tag_name} available.`);
                         }
                     } catch(e) {

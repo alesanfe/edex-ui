@@ -238,6 +238,10 @@ function createWindow(settings) {
         webPreferences: {
             devTools: true,
 	    	enableRemoteModule: true,
+            // contextIsolation cannot be enabled while the renderer still
+            // relies on nodeIntegration (Electron drops node globals when
+            // isolation is on). Full isolation requires the preload+IPC
+            // refactor - see SECURITY.md "Known debt".
             contextIsolation: false,
             backgroundThrottling: false,
             webSecurity: true,

@@ -478,11 +478,11 @@ async function initUI() {
     let shellContainer = document.getElementById("main_shell");
     shellContainer.innerHTML += `
         <ul id="main_shell_tabs">
-            <li id="shell_tab0" onclick="window.focusShellTab(0);" class="active"><p>MAIN SHELL</p></li>
-            <li id="shell_tab1" onclick="window.focusShellTab(1);"><p>EMPTY</p></li>
-            <li id="shell_tab2" onclick="window.focusShellTab(2);"><p>EMPTY</p></li>
-            <li id="shell_tab3" onclick="window.focusShellTab(3);"><p>EMPTY</p></li>
-            <li id="shell_tab4" onclick="window.focusShellTab(4);"><p>EMPTY</p></li>
+            <li id="shell_tab0" class="active"><p>MAIN SHELL</p></li>
+            <li id="shell_tab1"><p>EMPTY</p></li>
+            <li id="shell_tab2"><p>EMPTY</p></li>
+            <li id="shell_tab3"><p>EMPTY</p></li>
+            <li id="shell_tab4"><p>EMPTY</p></li>
         </ul>
         <div id="main_shell_innercontainer">
             <pre id="terminal0" class="active"></pre>
@@ -499,6 +499,10 @@ async function initUI() {
         })
     };
     window.currentTerm = 0;
+    // Wire tab click handlers - inline handlers are blocked by the strict CSP
+    for (let i = 0; i < 5; i++) {
+        document.getElementById("shell_tab"+i).onclick = () => window.focusShellTab(i);
+    }
     window.term[0].onprocesschange = p => {
         document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
     };
@@ -860,10 +864,10 @@ window.openSettings = async () => {
                 <h6 id="settingsEditorStatus">Loaded values from memory</h6>
                 <br>`,
         buttons: [
-            { label: "Open in External Editor", action: `electron.shell.openPath('${settingsFile}');electronWin.minimize();` },
-            { label: "Save to Disk", action: "window.writeSettingsFile()" },
-            { label: "Reload UI", action: "window.location.reload(true);" },
-            { label: "Restart xDEX-UI", action: "remote.app.relaunch();remote.app.quit();" }
+            { label: "Open in External Editor", action: () => { electron.shell.openPath(settingsFile); electronWin.minimize(); } },
+            { label: "Save to Disk", action: () => window.writeSettingsFile() },
+            { label: "Reload UI", action: () => window.location.reload(true) },
+            { label: "Restart xDEX-UI", action: () => { remote.app.relaunch(); remote.app.quit(); } }
         ]
     }, () => {
         // Link the keyboard back to the terminal
@@ -1006,8 +1010,8 @@ window.openShortcutsHelp = () => {
                 </details>
                 <br>`,
         buttons: [
-            { label: "Open Shortcuts File", action: `electron.shell.openPath('${shortcutsFile}');electronWin.minimize();` },
-            { label: "Reload UI", action: "window.location.reload(true);" },
+            { label: "Open Shortcuts File", action: () => { electron.shell.openPath(shortcutsFile); electronWin.minimize(); } },
+            { label: "Reload UI", action: () => window.location.reload(true) },
         ]
     }, () => {
         window.keyboard.attach();

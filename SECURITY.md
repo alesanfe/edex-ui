@@ -33,18 +33,28 @@ with you and credit reporters in release notes unless you prefer anonymity.
   connections from `file://`/`null` origins *and* loopback addresses, and
   allows a single client. Regression tests live in
   `src/tests/cve-2023-30856.test.js` (`npm run test:cve` in `src/`).
-- **Renderer hardening:** navigation away from the UI is blocked
-  (`will-navigate`), new windows are redirected to the system browser,
-  drag-and-drop navigation is disabled, and all web permission requests
-  (geolocation, media, notifications, ...) are denied.
+- **Renderer hardening:** a strict `script-src file:` CSP forbids inline
+  script handlers and injected scripts (all UI handlers are assigned via
+  JavaScript, not HTML attributes), `eval()` is disabled at boot, navigation
+  away from the UI is blocked (`will-navigate`), new windows are redirected
+  to the system browser, drag-and-drop navigation is disabled, and all web
+  permission requests (geolocation, media, notifications, ...) are denied.
 - **Known debt:** the renderer still runs with `nodeIntegration: true` /
   `contextIsolation: false`, required by the current architecture
-  (`@electron/remote`, direct `require()` in renderer classes). Migrating to a
-  preload + IPC bridge is planned; until then, never load remote content in
-  the main window.
-- **Accepted residual advisories:** `npm audit` reports moderate findings in
-  `geolite2-redist`'s install-time tooling (`rimraf`/`glob`/`minimatch`).
-  These only run while downloading the GeoIP database at install time, are
-  invoked with globbing disabled, and never execute in the shipped
-  application. They are accepted rather than patched via overrides that could
-  break the downloader.
+  (`@electron/remote`, direct `require()` in ~20 renderer class files).
+  Electron cannot keep `nodeIntegration` enabled under `contextIsolation`
+  (the page loses the node globals), so isolation requires rewriting every
+  synchronous native call (`fs`, `sqlite3`, `xterm`, `child_process`) into
+  an async preload/IPC bridge — a deep refactor tracked as future work.
+  Until then, the strict CSP + navigation lockdown are the defense-in-depth
+  layers against XSS-to-RCE escalation; never load remote content in the
+  main window.
+- **Accepted residual advisories:** `npm audit` reports moderate findings
+  (`minimatch`/`glob`/`rimraf` chains) inside install/packaging-time tooling:
+  `geolite2-redist`'s GeoIP downloader (invoked with globbing disabled) and
+  `electron-builder`/`@electron/asar`/`electron-winstaller` (which only run
+  in CI and never ship inside the app). They are accepted rather than
+  patched via overrides that could break the downloader or the packager.
+  The exploitable-dependency surface (`tar`, `undici`, `electron`, `ejs`,
+  `app-builder-lib`, `node-gyp`) is kept patched via `overrides` and
+  current releases.
