@@ -457,6 +457,28 @@ async function initUI() {
     window.mods.conninfo = new Conninfo("mod_column_right");
     window.mods.openportlist = new OpenPortList("mod_column_right");
 
+    // UI mode (EPIC-03): apply saved mode, or let the user pick on first run
+    if (!window.settings.uiMode) {
+        const chooser = new Modal({
+            type: "custom",
+            title: "Choose your interface mode",
+            html: `<div id="uiModeChooser">
+                <p>This choice can be changed anytime in settings.</p>
+                <table>
+                    <tr><th>IMMERSIVE</th><td>Full HUD experience - every monitor, animations, on-screen keyboard. The classic eDEX look. <b>(recommended)</b></td></tr>
+                    <tr><th>PRODUCTIVE</th><td>Terminal-focused - compact monitor, no globe or keyboard, reduced animations. Built for daily work.</td></tr>
+                    <tr><th>LIGHT</th><td>Terminal only - monitor and animations off, minimal CPU/GPU/RAM footprint.</td></tr>
+                </table>
+            </div>`,
+            buttons: [
+                {label: "IMMERSIVE", action: () => { window.applyUIMode("immersive"); chooser.close(); }},
+                {label: "PRODUCTIVE", action: () => { window.applyUIMode("productive"); chooser.close(); }},
+                {label: "LIGHT", action: () => { window.applyUIMode("light"); chooser.close(); }}
+            ]
+        });
+    }
+    window.applyUIMode(window.settings.uiMode || "immersive", false);
+
     // Fade-in animations
     document.querySelectorAll(".mod_column").forEach(e => {
         e.setAttribute("class", "mod_column activated");
@@ -686,6 +708,16 @@ window.openSettings = async () => {
                         <th>Value</th>
                     </tr>
                     <tr>
+                        <td>uiMode</td>
+                        <td>Interface mode: immersive (full HUD), productive (compact monitor) or light (terminal only)</td>
+                        <td><select id="settingsEditor-uiMode">
+                            <option>${window.settings.uiMode || 'immersive'}</option>
+                            <option>immersive</option>
+                            <option>productive</option>
+                            <option>light</option>
+                        </select></td>
+                    </tr>
+                    <tr>
                         <td>shell</td>
                         <td>The program to run as a terminal emulator</td>
                         <td><input type="text" id="settingsEditor-shell" value="${window.settings.shell}"></td>
@@ -897,7 +929,10 @@ window.writeFile = (path) => {
 };
 
 window.writeSettingsFile = () => {
-    window.settings = {
+    // Merge over existing settings so keys not exposed in the editor
+    // (uiMode, workspaces, sshProfiles...) are preserved on save.
+    window.settings = Object.assign({}, window.settings, {
+        uiMode: document.getElementById("settingsEditor-uiMode").value,
         shell: document.getElementById("settingsEditor-shell").value,
         shellArgs: document.getElementById("settingsEditor-shellArgs").value,
         cwd: document.getElementById("settingsEditor-cwd").value,
@@ -927,7 +962,7 @@ window.writeSettingsFile = () => {
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
         experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
-    };
+    });
 
     Object.keys(window.settings).forEach(key => {
         if (window.settings[key] === "undefined") {
@@ -935,8 +970,14 @@ window.writeSettingsFile = () => {
         }
     });
 
-    fs.writeFileSync(settingsFile, JSON.stringify(window.settings, "", 4));
+    window.writeSettingsFile();
+    // Apply the new UI mode live (UI-004: hot switch, no restart)
+    if (typeof window.applyUIMode === "function") window.applyUIMode(window.settings.uiMode, false);
     document.getElementById("settingsEditorStatus").innerText = "New values written to settings.json file at " + new Date().toTimeString();
+};
+
+window.writeSettingsFile = () => {
+    fs.writeFileSync(settingsFile, JSON.stringify(window.settings, "", 4));
 };
 
 window.toggleFullScreen = () => {
@@ -1104,6 +1145,9 @@ window.useAppShortcut = action => {
             return true;
         case "TERMINAL_SEARCH":
             window.openTermSearch();
+            return true;
+        case "UI_MODE_NEXT":
+            window.cycleUIMode();
             return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();

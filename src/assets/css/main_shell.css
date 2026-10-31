@@ -252,3 +252,62 @@ div#main_shell_innercontainer pre#terminal4 {
 #term_search button:hover {
     background: rgba(47, 111, 143, 0.8);
 }
+
+/* ============ UI modes (EPIC-03) ============ */
+
+/* -- productive: terminal-first layout with a compact monitor -- */
+body[data-ui-mode="productive"] .mod_column {
+    width: 11%;
+}
+body[data-ui-mode="productive"] .mod_column > h3.title {
+    width: 9.8%;
+}
+body[data-ui-mode="productive"] section#main_shell {
+    width: 76% !important;
+    height: 76% !important;
+}
+body[data-ui-mode="productive"] section#main_shell > h3.title {
+    left: 10.2vw;
+    width: 77%;
+}
+body[data-ui-mode="productive"] section#filesystem {
+    width: 76vw;
+}
+body[data-ui-mode="productive"] section#keyboard {
+    display: none;
+}
+
+/* -- light: terminal only, monitor columns hidden by applyUIMode -- */
+body[data-ui-mode="light"] section#main_shell {
+    width: 97% !important;
+    height: 60.3% !important;
+}
+body[data-ui-mode="light"] section#main_shell > h3.title {
+    left: 1.2vw;
+    width: 98%;
+}
+body[data-ui-mode="light"] section#filesystem {
+    width: 97vw;
+}
+body[data-ui-mode="light"] section#keyboard {
+    display: none;
+}
+
+/* -- animation capability levels -- */
+body[data-animations="reduced"] * {
+    animation-duration: 0.2s !important;
+    transition-duration: 0.1s !important;
+}
+body[data-animations="off"] * {
+    animation: none !important;
+    transition: none !important;
+}
+
+/* Accessibility: honor the OS reduced-motion preference (A11Y-002) */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

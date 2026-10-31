@@ -24,7 +24,8 @@ class HardwareInspector {
         this.parent.append(this._element);
 
         this.updateInfo();
-        this.infoUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.infoUpdater = this._every(() => {
             this.updateInfo();
         }, 20000);
     }

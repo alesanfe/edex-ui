@@ -102,18 +102,19 @@ class Cpuinfo {
             this.updateCPUspeed();
             this.updatingCPUtasks = false;
             this.updateCPUtasks();
-            this.loadUpdater = setInterval(() => {
+            window.initPausable(this);
+            this.loadUpdater = this._every(() => {
                 this.updateCPUload();
             }, 500);
             if (process.platform !== "win32") {
-                this.tempUpdater = setInterval(() => {
+                this.tempUpdater = this._every(() => {
                     this.updateCPUtemp();
                 }, 2000);
             }
-            this.speedUpdater = setInterval(() => {
+            this.speedUpdater = this._every(() => {
                 this.updateCPUspeed();
             }, 1000);
-            this.tasksUpdater = setInterval(() => {
+            this.tasksUpdater = this._every(() => {
                 this.updateCPUtasks();
             }, 5000);
         });

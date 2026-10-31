@@ -12,7 +12,8 @@ class OpenPortList {
         this.parent.append(this._element);
 
         this.updateList();
-        this.listUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.listUpdater = this._every(() => {
             this.updateList();
         }, 2000);
     }

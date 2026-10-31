@@ -64,7 +64,7 @@ class LocationGlobe {
                 }
             };
             this.globe.init(window.theme.colors.light_black, () => {
-                this._animate();
+                if (this._animate) this._animate();
                 window.audioManager.scan.play();
             });
 
@@ -118,14 +118,28 @@ class LocationGlobe {
         }, 2000);
 
         // Init updaters when intro animation is done
+        window.initPausable(this);
+        // Pausing also stops the render loop; resuming re-arms it
+        const baseSetPaused = this._setPaused;
+        this._setPaused = paused => {
+            baseSetPaused(paused);
+            if (paused) {
+                this._resumeAnimate = this._animate || null;
+                this._animate = null;
+            } else if (this._resumeAnimate) {
+                this._animate = this._resumeAnimate;
+                this._resumeAnimate = null;
+                this._animate();
+            }
+        };
         setTimeout(() => {
             this.updateLoc();
-            this.locUpdater = setInterval(() => {
+            this.locUpdater = this._every(() => {
                 this.updateLoc();
             }, 1000);
 
             this.updateConns();
-            this.connsUpdater = setInterval(() => {
+            this.connsUpdater = this._every(() => {
                 this.updateConns();
             }, 3000);
         }, 4000);

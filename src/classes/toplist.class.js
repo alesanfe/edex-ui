@@ -15,7 +15,8 @@ class Toplist {
         this.currentlyUpdating = false;
 
         this.updateList();
-        this.listUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.listUpdater = this._every(() => {
             this.updateList();
         }, 2000);
     }

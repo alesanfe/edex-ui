@@ -32,7 +32,8 @@ class Netstat {
 
         // Init updaters
         this.updateInfo();
-        this.infoUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.infoUpdater = this._every(() => {
             this.updateInfo();
         }, 2000);
 

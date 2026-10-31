@@ -38,11 +38,12 @@ class Sysinfo {
 
         this.updateDate();
         this.updateUptime();
-        this.uptimeUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.uptimeUpdater = this._every(() => {
             this.updateUptime();
         }, 60000);
         this.updateBattery();
-        this.batteryUpdater = setInterval(() => {
+        this.batteryUpdater = this._every(() => {
             this.updateBattery();
         }, 3000);
     }

@@ -14,7 +14,8 @@ class Clock {
         this.lastTime = new Date();
 
         this.updateClock();
-        this.updater = setInterval(() => {
+        window.initPausable(this);
+        this.updater = this._every(() => {
             this.updateClock();
         }, 1000);
     }

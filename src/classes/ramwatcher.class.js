@@ -31,7 +31,8 @@ class RAMwatcher {
         // Init updaters
         this.currentlyUpdating = false;
         this.updateInfo();
-        this.infoUpdater = setInterval(() => {
+        window.initPausable(this);
+        this.infoUpdater = this._every(() => {
             this.updateInfo();
         }, 1500);
     }
