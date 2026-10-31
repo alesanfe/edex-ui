@@ -72,7 +72,8 @@ class Terminal {
                 });
             }
 
-            let color = require("color").default;
+            let colorModule = require("color");
+            let color = colorModule.default || colorModule.Color || colorModule;
             let colorify;
             if (doCustomFilter) {
                 colorify = (base, target) => {

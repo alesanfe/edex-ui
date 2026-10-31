@@ -52,5 +52,9 @@
   },
   "optionalDependencies": {
     "osx-temperature-sensor": "1.0.7"
+  },
+  "allowScripts": {
+    "node-pty@1.1.0": true,
+    "sqlite3@5.1.7": true
   }
 }
