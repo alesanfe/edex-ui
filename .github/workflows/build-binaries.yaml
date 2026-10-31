@@ -268,9 +268,15 @@ jobs:
         npm sbom --sbom-format cyclonedx --omit=dev > artifacts/sbom.cyclonedx.json
         node -e "const s=require('./artifacts/sbom.cyclonedx.json'); if(!s.components||!s.components.length) throw new Error('empty SBOM')"
     - name: Create GitHub release
+      # Idempotent: the tag fires both `push` and `create` workflow runs, so the
+      # second release attempt must update instead of failing.
       run: |
         PRE=""
         case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
-        gh release create "$GITHUB_REF_NAME" artifacts/* --title "xDEX-UI $GITHUB_REF_NAME" --generate-notes $PRE
+        if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+        else
+          gh release create "$GITHUB_REF_NAME" artifacts/* --title "xDEX-UI $GITHUB_REF_NAME" --generate-notes $PRE
+        fi
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
