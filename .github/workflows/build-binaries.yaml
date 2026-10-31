@@ -98,12 +98,18 @@ jobs:
     - name: npm install
       run: npm install
     - name: npm build
-      run: npm run build-windows
+      # Secrets are read under neutral names and only exported as the
+      # electron-builder vars when non-empty - an empty CSC_LINK is
+      # interpreted as a cert path and fails the build.
+      shell: bash
+      run: |
+        if [ -n "$XDEX_WIN_CSC_LINK" ]; then export CSC_LINK="$XDEX_WIN_CSC_LINK"; fi
+        if [ -n "$XDEX_CSC_PASSWORD" ]; then export CSC_KEY_PASSWORD="$XDEX_CSC_PASSWORD"; fi
+        npm run build-windows
       env:
         DEBUG: electron-builder
-        # Code signing activates automatically when these secrets are configured
-        CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-        CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        XDEX_WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+        XDEX_CSC_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
     - uses: actions/upload-artifact@v4
       with:
         name: Windows-Installer
@@ -135,15 +141,20 @@ jobs:
     - name: npm install
       run: npm install
     - name: npm build
-      run: npm run build-darwin
+      run: |
+        if [ -n "$XDEX_MAC_CSC_LINK" ]; then export CSC_LINK="$XDEX_MAC_CSC_LINK"; fi
+        if [ -n "$XDEX_CSC_PASSWORD" ]; then export CSC_KEY_PASSWORD="$XDEX_CSC_PASSWORD"; fi
+        if [ -n "$XDEX_APPLE_ID" ]; then export APPLE_ID="$XDEX_APPLE_ID"; fi
+        if [ -n "$XDEX_APPLE_PW" ]; then export APPLE_APP_SPECIFIC_PASSWORD="$XDEX_APPLE_PW"; fi
+        if [ -n "$XDEX_APPLE_TEAM" ]; then export APPLE_TEAM_ID="$XDEX_APPLE_TEAM"; fi
+        npm run build-darwin
       env:
         DEBUG: electron-builder
-        # macOS signing + notarization activate when these secrets are configured
-        CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-        CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        APPLE_ID: ${{ secrets.APPLE_ID }}
-        APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        XDEX_MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+        XDEX_CSC_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        XDEX_APPLE_ID: ${{ secrets.APPLE_ID }}
+        XDEX_APPLE_PW: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        XDEX_APPLE_TEAM: ${{ secrets.APPLE_TEAM_ID }}
     - uses: actions/upload-artifact@v4
       with:
         name: MacOS-Image
