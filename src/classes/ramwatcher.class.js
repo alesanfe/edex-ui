@@ -72,6 +72,11 @@ class RAMwatcher {
             let usedGiB = Math.round((data.active/1073742000)*10)/10;
             document.getElementById("mod_ramwatcher_info").innerText = `USING ${usedGiB} OUT OF ${totalGiB} GiB`;
 
+            // MON-004/005: bounded history + threshold alerts
+            if (window.MonitorHistory && data.total > 0) {
+                window.MonitorHistory.push({mem: Math.round((100 * data.active) / data.total)});
+            }
+
             // Update swap indicator
             let usedSwap = Math.round((100*data.swapused)/data.swaptotal);
             document.getElementById("mod_ramwatcher_swapbar").value = usedSwap || 0;

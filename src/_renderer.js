@@ -60,6 +60,18 @@ window.writeWorkspacesFile = () => {
     fs.writeFileSync(workspacesFile, JSON.stringify(window.workspaceStore, "", 4));
 };
 
+// SSH profiles store (EPIC-05): metadata only - never secrets
+const sshProfilesFile = path.join(settingsDir, "ssh-profiles.json");
+window.sshStore = fs.existsSync(sshProfilesFile)
+    ? window.SshProfiles.parseStore(fs.readJsonSync(sshProfilesFile))
+    : {version: window.SshProfiles.SCHEMA_VERSION, profiles: []};
+window.writeSshProfilesFile = () => {
+    fs.writeFileSync(sshProfilesFile, JSON.stringify(window.sshStore, "", 4));
+};
+
+// Monitor history (EPIC-06 / MON-004): bounded local ring, opt-out via settings
+window.MonitorHistory.init(path.join(settingsDir, "monitor-history.json"));
+
 // Load CLI parameters
 const args = ipc.invoke("get-cli-args").then(args => {
     if (args.includes("--nointro")) {
@@ -457,6 +469,7 @@ async function initUI() {
     window.mods.sysinfo = new Sysinfo("mod_column_left");
     window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
     window.mods.cpuinfo = new Cpuinfo("mod_column_left");
+    window.mods.gpuinfo = new Gpuinfo("mod_column_left");
     window.mods.ramwatcher = new RAMwatcher("mod_column_left");
     window.mods.toplist = new Toplist("mod_column_left");
 
@@ -637,6 +650,8 @@ window.focusShellTab = number => {
         window.term[number].fit();
         window.term[number].term.focus();
         window.term[number].resendCWD();
+
+        window.applyHostIdentity(window.term[number].sshProfile || null);
 
         window.fsDisp.followTab();
     } else if (number > 0 && number <= 4 && window.term[number] !== null && typeof window.term[number] !== "object") {
@@ -1164,6 +1179,12 @@ window.useAppShortcut = action => {
         case "WORKSPACES":
             window.openWorkspaces();
             return true;
+        case "SSH_PROFILES":
+            window.openSshProfiles();
+            return true;
+        case "MONITOR_WIDGETS":
+            window.openMonitorWidgets();
+            return true;
         case "FS_LIST_VIEW":
             window.fsDisp.toggleListview();
             return true;
@@ -1502,6 +1523,251 @@ window.openWorkspaces = () => {
                 case "dup": window.duplicateWorkspace(id); m.close(); break;
                 case "export": window.exportWorkspace(id); break;
                 case "del": window.deleteWorkspace(id); m.close(); break;
+            }
+        });
+    });
+};
+
+// ================= Monitor widgets (EPIC-06 / MON-001/002) =================
+window.openMonitorWidgets = () => {
+    const keys = ["clock", "sysinfo", "hardwareInspector", "cpuinfo", "gpuinfo",
+        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist"];
+    const toggles = (window.settings.monitorWidgets) || {};
+    const rows = keys.map(k => {
+        const on = toggles[k] !== false;
+        return `<tr><td>${k}</td><td>
+            <select data-mw-key="${k}"><option ${on ? "selected" : ""}>on</option><option ${!on ? "selected" : ""}>off</option></select>
+        </td></tr>`;
+    }).join("");
+    const m = new Modal({
+        type: "custom",
+        title: "Monitor widgets",
+        html: `<div id="monitor_widgets_panel">
+            <table><tr><th>Widget</th><th>State</th></tr>${rows}</table>
+            <h5>Polling scale (0.5 - 5, applies on mode/widget change):</h5>
+            <input type="number" step="0.5" min="0.5" max="5" id="mw_poll_scale"
+                value="${window.settings.monitorPollScale || 1}" />
+        </div>`,
+        buttons: [{label: "APPLY", action: () => {
+            const next = {};
+            document.querySelectorAll("#monitor_widgets_panel select[data-mw-key]").forEach(sel => {
+                if (sel.value === "off") next[sel.getAttribute("data-mw-key")] = false;
+            });
+            window.settings.monitorWidgets = next;
+            const scale = Number(document.getElementById("mw_poll_scale").value);
+            window.settings.monitorPollScale = Math.max(0.5, Math.min(5, scale || 1));
+            window.writeSettingsFile();
+            window.applyUIMode(window.settings.uiMode || "immersive", false);
+            m.close();
+        }}]
+    });
+};
+
+// ================= SSH profiles (EPIC-05) =================
+// Connecting spawns the system `ssh` client in a dedicated tab. Auth, host-key
+// verification and agents run inside the PTY - nothing secret crosses IPC.
+
+// Per-host HUD identity (SSH-002): banner + env accent on the frame. The
+// environment is conveyed by label text AND color (not color alone).
+window.applyHostIdentity = profile => {
+    let banner = document.getElementById("host_banner");
+    if (profile) {
+        document.body.setAttribute("data-host-env", profile.environment);
+        if (!banner) {
+            banner = document.createElement("div");
+            banner.id = "host_banner";
+            document.body.appendChild(banner);
+        }
+        banner.textContent = `SSH ${profile.alias} — ` +
+            `${profile.user ? profile.user + "@" : ""}${profile.hostname} · ` +
+            `${profile.environment.toUpperCase()}`;
+        banner.style.borderBottomColor = profile.color || "";
+        banner.style.display = "";
+    } else {
+        document.body.removeAttribute("data-host-env");
+        if (banner) banner.style.display = "none";
+    }
+};
+
+window.connectSsh = id => {
+    const profile = (window.sshStore.profiles || []).find(p => p.id === id);
+    if (!profile) return;
+    let slot = -1;
+    for (let i = 1; i <= 4; i++) {
+        if (!window.term[i]) { slot = i; break; }
+    }
+    if (slot === -1) {
+        new Modal({type: "warning", title: "No free tab",
+            message: "All 4 extra terminal tabs are in use - close one before connecting."});
+        return;
+    }
+    profile.lastUsedAt = new Date().toISOString();
+    window.writeSshProfilesFile();
+
+    window.term[slot] = null;
+    document.getElementById("shell_tab" + slot).innerHTML = `<p>SSH ${wsEsc(profile.alias)}</p>`;
+    const number = slot;
+    ipc.send("ttyspawn-ssh", {
+        hostname: profile.hostname,
+        user: profile.user,
+        port: profile.port,
+        remoteDir: profile.remoteDir,
+        env: profile.env
+    });
+    ipc.once("ttyspawn-ssh-reply", (e, r) => {
+        if (r.startsWith("ERROR")) {
+            document.getElementById("shell_tab" + number).innerHTML = "<p>ERROR</p>";
+            return;
+        }
+        if (r.startsWith("SUCCESS")) {
+            let port = Number(r.substr(9));
+            window.term[number] = new Terminal({
+                role: "client",
+                parentId: "terminal" + number,
+                port
+            });
+            window.term[number].sshProfile = profile;
+            window.term[number].onclose = ev => {
+                delete window.term[number].onprocesschange;
+                document.getElementById("shell_tab" + number).innerHTML = "<p>EMPTY</p>";
+                document.getElementById("terminal" + number).innerHTML = "";
+                window.term[number].term.dispose();
+                delete window.term[number];
+                window.applyHostIdentity(null);
+                window.useAppShortcut("PREVIOUS_TAB");
+            };
+            window.term[number].onprocesschange = p => {
+                document.getElementById("shell_tab" + number).innerHTML =
+                    `<p>${wsEsc(profile.alias)} - ${wsEsc(p)}</p>`;
+            };
+            document.getElementById("shell_tab" + number).innerHTML =
+                `<p>SSH ${wsEsc(profile.alias)}</p>`;
+            setTimeout(() => {
+                window.focusShellTab(number);
+                window.applyHostIdentity(profile);
+            }, 500);
+        }
+    });
+};
+
+window.deleteSshProfile = id => {
+    const p = (window.sshStore.profiles || []).find(x => x.id === id);
+    if (!p) return;
+    const m = new Modal({
+        type: "custom",
+        title: "Delete SSH profile",
+        html: `<h5>Delete profile "${wsEsc(p.alias)}"?</h5>`,
+        buttons: [{label: "DELETE", action: () => {
+            window.sshStore.profiles = window.sshStore.profiles.filter(x => x.id !== id);
+            window.writeSshProfilesFile();
+            m.close();
+            window.openSshProfiles();
+        }}]
+    });
+};
+
+window.editSshProfile = id => {
+    const p = (window.sshStore.profiles || []).find(x => x.id === id) || {
+        id: nanoid(), alias: "", hostname: "", user: "", port: 22,
+        remoteDir: "", env: {}, environment: "dev", color: "", uiMode: null, reconnect: "off"
+    };
+    const envOpts = window.SshProfiles.ENVS.map(e =>
+        `<option ${e === p.environment ? "selected" : ""}>${e}</option>`).join("");
+    const modeOpts = ["", "immersive", "productive", "light"].map(x =>
+        `<option ${x === (p.uiMode || "") ? "selected" : ""}>${x}</option>`).join("");
+    const m = new Modal({
+        type: "custom",
+        title: p.alias ? `Edit ${wsEsc(p.alias)}` : "New SSH profile",
+        html: `<table id="sshProfileForm">
+            <tr><td>Alias</td><td><input id="sshF-alias" value="${wsEsc(p.alias)}"></td></tr>
+            <tr><td>Hostname</td><td><input id="sshF-hostname" value="${wsEsc(p.hostname)}"></td></tr>
+            <tr><td>User</td><td><input id="sshF-user" value="${wsEsc(p.user)}"></td></tr>
+            <tr><td>Port</td><td><input id="sshF-port" type="number" value="${p.port}"></td></tr>
+            <tr><td>Remote dir</td><td><input id="sshF-remoteDir" value="${wsEsc(p.remoteDir)}" placeholder="~/project"></td></tr>
+            <tr><td>Environment</td><td><select id="sshF-environment">${envOpts}</select></td></tr>
+            <tr><td>UI mode</td><td><select id="sshF-uiMode">${modeOpts}</select></td></tr>
+            <tr><td>Accent color</td><td><input id="sshF-color" value="${wsEsc(p.color)}" placeholder="#rrggbb"></td></tr>
+        </table>
+        <h5>Auth: system ssh agent/keys (interactive). Passwords and key paths are never stored.</h5>`,
+        buttons: [{label: "SAVE", action: () => {
+            const candidate = {
+                id: p.id,
+                alias: document.getElementById("sshF-alias").value.trim(),
+                hostname: document.getElementById("sshF-hostname").value.trim(),
+                user: document.getElementById("sshF-user").value.trim(),
+                port: Number(document.getElementById("sshF-port").value),
+                remoteDir: document.getElementById("sshF-remoteDir").value.trim(),
+                env: p.env || {},
+                environment: document.getElementById("sshF-environment").value,
+                color: document.getElementById("sshF-color").value.trim(),
+                uiMode: document.getElementById("sshF-uiMode").value || null,
+                reconnect: p.reconnect || "off",
+                lastUsedAt: p.lastUsedAt || null
+            };
+            const clean = window.SshProfiles.sanitize(candidate);
+            if (!clean) {
+                new Modal({type: "warning", title: "Invalid profile",
+                    message: "Alias and hostname are required; host/user may only contain [a-zA-Z0-9._-], port 1-65535, remote dir [~a-zA-Z0-9_-./]."});
+                return;
+            }
+            const idx = window.sshStore.profiles.findIndex(x => x.id === clean.id);
+            if (idx >= 0) window.sshStore.profiles[idx] = clean;
+            else if (window.sshStore.profiles.length < window.SshProfiles.MAX_PROFILES) {
+                window.sshStore.profiles.push(clean);
+            }
+            window.writeSshProfilesFile();
+            m.close();
+            window.openSshProfiles();
+        }}]
+    });
+};
+
+// SSH-004: searchable profile palette - filter by alias/host/env, recent first
+window.openSshProfiles = () => {
+    const profiles = (window.sshStore.profiles || []).slice()
+        .sort((a, b) => String(b.lastUsedAt || "").localeCompare(String(a.lastUsedAt || "")));
+    const rows = profiles.map(p => {
+        const prodCls = p.environment === "prod" ? " class=\"ssh_prod\"" : "";
+        return `<tr${prodCls}>
+            <td>${wsEsc(p.alias)}${p.environment === "prod" ? " ⚠" : ""}</td>
+            <td>${wsEsc((p.user ? p.user + "@" : "") + p.hostname + ":" + p.port)}</td>
+            <td>${wsEsc(p.environment)}</td>
+            <td><button data-ssh-act="connect" data-ssh-id="${p.id}">CONNECT</button>
+                <button data-ssh-act="edit" data-ssh-id="${p.id}">EDIT</button>
+                <button data-ssh-act="del" data-ssh-id="${p.id}">DEL</button></td>
+        </tr>`;
+    }).join("");
+    const m = new Modal({
+        type: "custom",
+        title: `SSH profiles (${profiles.length})`,
+        html: `<div id="ssh_profiles_panel">
+                <input type="text" id="ssh_filter" placeholder="Filter by alias, host, environment..." />
+                <button id="ssh_new_btn">NEW PROFILE</button>
+                <table id="ssh_profiles_table"><tr><th>Alias</th><th>Target</th><th>Env</th><th></th></tr>
+                ${rows || "<tr><td colspan=4>No SSH profiles yet</td></tr>"}</table>
+            </div>`,
+        buttons: []
+    });
+    const root = document.getElementById("modal_" + m.id);
+    const filter = root.querySelector("#ssh_filter");
+    filter.addEventListener("input", () => {
+        const q = filter.value.toLowerCase();
+        root.querySelectorAll("#ssh_profiles_table tr").forEach((tr, i) => {
+            if (i === 0) return;
+            tr.style.display = tr.textContent.toLowerCase().includes(q) ? "" : "none";
+        });
+    });
+    root.querySelector("#ssh_new_btn").addEventListener("click", () => {
+        m.close();
+        window.editSshProfile(null);
+    });
+    root.querySelectorAll("button[data-ssh-act]").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-ssh-id");
+            switch (btn.getAttribute("data-ssh-act")) {
+                case "connect": m.close(); window.connectSsh(id); break;
+                case "edit": m.close(); window.editSshProfile(id); break;
+                case "del": m.close(); window.deleteSshProfile(id); break;
             }
         });
     });

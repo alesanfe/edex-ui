@@ -51,7 +51,10 @@ class Cpuinfo {
                         <i id="mod_cpuinfo_tasks">---</i></h1>
                     </div>
                 </div>`;
-            this.container.append(innercontainer);
+            // Re-query: a sibling module's `parent.innerHTML +=` may have
+            // destroyed the element captured in the constructor
+            const liveContainer = document.getElementById("mod_cpuinfo") || this.container;
+            liveContainer.append(innercontainer);
 
             for (var i = 0; i < 2; i++) {
                 this.charts.push(new SmoothieChart({
@@ -145,6 +148,10 @@ class Cpuinfo {
                     // Fail silently, DOM element is probably getting refreshed (new theme, etc)
                 }
             });
+            // MON-004/005: bounded history + threshold alerts
+            if (window.MonitorHistory && Number.isFinite(average[0])) {
+                window.MonitorHistory.push({cpu: average[0]});
+            }
             this.updatingCPUload = false;
         });
     }

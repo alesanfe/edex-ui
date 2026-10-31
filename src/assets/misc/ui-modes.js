@@ -6,41 +6,59 @@ window.UI_MODES = {
         monitor: "full",      // every monitor widget visible
         animations: "full",
         keyboard: true,
-        fsPanel: true
+        fsPanel: true,
+        pollScale: 1          // telemetry interval multiplier
     },
     productive: {
         monitor: "compact",   // essential widgets only, denser layout
         animations: "reduced",
         keyboard: false,
-        fsPanel: true
+        fsPanel: true,
+        pollScale: 1.5
     },
     light: {
         monitor: "off",       // no monitor columns, minimal resource use
         animations: "off",
         keyboard: false,
-        fsPanel: true
+        fsPanel: true,
+        pollScale: 1
     }
 };
 
 // Widget visibility per monitor capability level. Keys match window.mods.
 window.UI_MONITOR_MODULES = {
     full: [
-        "clock", "sysinfo", "hardwareInspector", "cpuinfo", "ramwatcher",
-        "toplist", "netstat", "globe", "conninfo", "openportlist"
+        "clock", "sysinfo", "hardwareInspector", "cpuinfo", "gpuinfo",
+        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist"
     ],
     compact: ["clock", "sysinfo", "cpuinfo", "ramwatcher", "netstat"],
     off: []
 };
 
+// Effective polling scale: per-mode multiplier x user override
+// (settings.monitorPollScale, clamped 0.5 - 5). Used when arming timers so a
+// mode switch or a settings save re-arms with the new cadence (MON-002).
+window.currentPollScale = () => {
+    const user = Number(window.settings && window.settings.monitorPollScale) || 1;
+    const mode = (window.uiMode && window.uiMode.caps && window.uiMode.caps.pollScale) || 1;
+    return Math.max(0.5, Math.min(5, user)) * mode;
+};
+
 // Pausable interval registry. A module calls window.initPausable(this) in its
 // constructor and registers timers with this._every(fn, ms) instead of raw
-// setInterval; applyUIMode can then stop/restart them without leaks.
+// setInterval; applyUIMode can then stop/restart them without leaks. The
+// armed interval is base ms x currentPollScale(), recomputed on every arm.
 window.initPausable = obj => {
     obj._updaters = [];
     obj._paused = false;
+    const arm = u => {
+        const scale = typeof window.currentPollScale === "function"
+            ? window.currentPollScale() : 1;
+        u.id = setInterval(u.fn, Math.max(250, Math.round(u.ms * scale)));
+    };
     obj._every = (fn, ms) => {
         const u = {fn, ms, id: null};
-        if (!obj._paused) u.id = setInterval(fn, ms);
+        if (!obj._paused) arm(u);
         obj._updaters.push(u);
         return u;
     };
@@ -51,7 +69,7 @@ window.initPausable = obj => {
                 clearInterval(u.id);
                 u.id = null;
             } else if (!paused && u.id === null) {
-                u.id = setInterval(u.fn, u.ms);
+                arm(u);
             }
         });
     };
@@ -63,14 +81,27 @@ window.applyUIMode = (name, persist) => {
     document.body.setAttribute("data-ui-mode", window.uiMode.name);
     document.body.setAttribute("data-animations", caps.animations);
 
+    // Widget-level on/off on top of mode visibility (MON-001): a widget is
+    // shown only when the monitor level includes it AND its toggle is on.
+    const toggles = (window.settings && window.settings.monitorWidgets) || {};
     const visible = new Set(window.UI_MONITOR_MODULES[caps.monitor] || []);
+    const scaleChanged = window._lastPollScale !== window.currentPollScale();
     Object.entries(window.mods || {}).forEach(([key, mod]) => {
-        const on = visible.has(key);
+        const on = visible.has(key) && toggles[key] !== false;
         const el = (mod && mod._element) || document.getElementById("mod_" + key);
         if (el) el.style.display = on ? "" : "none";
-        if (mod && typeof mod._setPaused === "function") mod._setPaused(!on);
-        else if (mod && typeof mod.setPaused === "function") mod.setPaused(!on);
+        if (mod && typeof mod._setPaused === "function") {
+            mod._setPaused(!on);
+            // Re-arm visible widgets when the cadence changed (MON-002)
+            if (on && scaleChanged) {
+                mod._setPaused(true);
+                mod._setPaused(false);
+            }
+        } else if (mod && typeof mod.setPaused === "function") {
+            mod.setPaused(!on);
+        }
     });
+    window._lastPollScale = window.currentPollScale();
 
     document.querySelectorAll(".mod_column").forEach(col => {
         col.style.display = caps.monitor === "off" ? "none" : "";

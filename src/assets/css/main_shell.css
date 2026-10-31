@@ -311,3 +311,61 @@ body[data-animations="off"] * {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ============ SSH host identity (EPIC-05 / SSH-002) ============ */
+#host_banner {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1.85vh;
+    z-index: 900;
+    font-size: 1.1vh;
+    line-height: 1.85vh;
+    text-align: center;
+    letter-spacing: 0.15em;
+    background: var(--color_light_black);
+    color: rgb(var(--color_r), var(--color_g), var(--color_b));
+    border-bottom: 0.2vh solid rgb(var(--color_r), var(--color_g), var(--color_b));
+}
+body[data-host-env] {
+    padding-top: 3.7vh;
+}
+body[data-host-env="dev"] #host_banner {
+    border-bottom-color: #3fb950;
+}
+body[data-host-env="staging"] #host_banner {
+    border-bottom-color: #d29922;
+}
+body[data-host-env="prod"] #host_banner {
+    border-bottom-color: #f85149;
+    background: rgba(248, 81, 73, 0.18);
+}
+body[data-host-env="prod"] {
+    box-shadow: inset 0 0 0 0.3vh rgba(248, 81, 73, 0.55);
+}
+
+/* SSH profile rows flagged as production get a visible warning style */
+tr.ssh_prod td {
+    color: #f85149;
+    font-weight: bold;
+}
+tr.ssh_prod td button {
+    border-color: #f85149;
+}
+
+/* Monitor threshold alert banner (EPIC-06 / MON-005) */
+#monitor_alert {
+    display: none;
+    position: fixed;
+    top: 3.8vh;
+    right: 1vw;
+    z-index: 950;
+    padding: 0.5vh 1vw;
+    font-size: 1.2vh;
+    letter-spacing: 0.1em;
+    color: #f85149;
+    background: var(--color_light_black);
+    border: 0.2vh solid #f85149;
+}

@@ -568,7 +568,10 @@ app.on('ready', async () => {
         extraTtys[basePort+i] = null;
     }
 
-    ipc.on("ttyspawn", (e, arg) => {
+    // Shared extra-tty spawner used by ttyspawn (local shells) and
+    // ttyspawn-ssh (validated ssh targets). Params always go to Pty.spawn
+    // as an argv array - never through a shell.
+    function spawnExtraTty(e, opts) {
         let port = null;
         Object.keys(extraTtys).forEach(key => {
             if (extraTtys[key] === null && port === null) {
@@ -579,48 +582,117 @@ app.on('ready', async () => {
 
         if (port === null) {
             signale.error("TTY spawn denied (Reason: exceeded max TTYs number)");
-            e.sender.send("ttyspawn-reply", "ERROR: max number of ttys reached");
-        } else {
-            // Optional per-spawn cwd (workspace restore). Only an existing
-            // directory is honored; anything else falls back to the main
-            // terminal's cwd / settings.cwd - never executes anything.
-            let spawnCwd = tty.tty._cwd || settings.cwd;
-            if (arg && typeof arg === "object" && typeof arg.cwd === "string") {
-                try {
-                    if (fs.existsSync(arg.cwd)) spawnCwd = arg.cwd;
-                } catch(e) { /* keep fallback */ }
-            }
-            signale.pending(`Creating new TTY process on port ${port}`);
-            let term = new Terminal({
-                role: "server",
-                shell: settings.shell,
-                params: settings.shellArgs || '',
-                cwd: spawnCwd,
-                env: cleanEnv,
-                port: port
-            });
-            signale.success(`New terminal back-end initialized at ${port}`);
-            term.onclosed = (code, signal) => {
-                term.ondisconnected = () => {};
-                term.wss.close();
-                signale.complete(`TTY exited at ${port}`, code, signal);
-                extraTtys[term.port] = null;
-                term = null;
-            };
-            term.onopened = pid => {
-                signale.success(`TTY ${port} connected to frontend (process PID ${pid})`);
-            };
-            term.onresized = () => {};
-            // See #630 - keep the TTY alive when the frontend disconnects (e.g. hot reload),
-            // so that the tab can be restored when the UI comes back up
-            term.ondisconnected = () => {
-                signale.error(`Lost connection to frontend (tty ${port})`);
-                signale.watch("Waiting for frontend connection...");
-            };
-
-            extraTtys[port] = term;
-            e.sender.send("ttyspawn-reply", "SUCCESS: "+port);
+            e.sender.send(opts.replyChannel, "ERROR: max number of ttys reached");
+            return;
         }
+        signale.pending(`Creating new TTY process on port ${port}`);
+        let term = new Terminal({
+            role: "server",
+            shell: opts.shell,
+            params: opts.params,
+            cwd: opts.cwd,
+            env: opts.env || cleanEnv,
+            port: port
+        });
+        signale.success(`New terminal back-end initialized at ${port}`);
+        term.onclosed = (code, signal) => {
+            term.ondisconnected = () => {};
+            term.wss.close();
+            signale.complete(`TTY exited at ${port}`, code, signal);
+            extraTtys[term.port] = null;
+            term = null;
+        };
+        term.onopened = pid => {
+            signale.success(`TTY ${port} connected to frontend (process PID ${pid})`);
+        };
+        term.onresized = () => {};
+        // See #630 - keep the TTY alive when the frontend disconnects (e.g. hot reload),
+        // so that the tab can be restored when the UI comes back up
+        term.ondisconnected = () => {
+            signale.error(`Lost connection to frontend (tty ${port})`);
+            signale.watch("Waiting for frontend connection...");
+        };
+
+        extraTtys[port] = term;
+        e.sender.send(opts.replyChannel, "SUCCESS: "+port);
+    }
+
+    ipc.on("ttyspawn", (e, arg) => {
+        // Optional per-spawn cwd (workspace restore). Only an existing
+        // directory is honored; anything else falls back to the main
+        // terminal's cwd / settings.cwd - never executes anything.
+        let spawnCwd = tty.tty._cwd || settings.cwd;
+        if (arg && typeof arg === "object" && typeof arg.cwd === "string") {
+            try {
+                if (fs.existsSync(arg.cwd)) spawnCwd = arg.cwd;
+            } catch(err) { /* keep fallback */ }
+        }
+        spawnExtraTty(e, {
+            replyChannel: "ttyspawn-reply",
+            shell: settings.shell,
+            params: settings.shellArgs || '',
+            cwd: spawnCwd
+        });
+    });
+
+    // SSH spawn (EPIC-05): the renderer sends a SANITIZED profile (validated
+    // again here - never trust the bridge), args are built in this process,
+    // and only the fixed `ssh` binary is ever spawned. Host-key checking and
+    // authentication run interactively in the PTY via the system ssh client,
+    // so no secret material crosses IPC in either direction.
+    const SSH_HOST_RE = /^[a-zA-Z0-9._-]{1,253}$/;
+    const SSH_USER_RE = /^[a-zA-Z0-9._-]{1,64}$/;
+    const SSH_DIR_RE = /^[~a-zA-Z0-9_\-./]{1,300}$/;
+    const SSH_ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    ipc.on("ttyspawn-ssh", (e, arg) => {
+        if (!arg || typeof arg !== "object") {
+            e.sender.send("ttyspawn-ssh-reply", "ERROR: invalid request");
+            return;
+        }
+        const host = String(arg.hostname || "");
+        const user = String(arg.user || "");
+        const port = Number(arg.port);
+        if (!SSH_HOST_RE.test(host) || (user && !SSH_USER_RE.test(user))
+                || !Number.isInteger(port) || port < 1 || port > 65535) {
+            signale.warn("ttyspawn-ssh rejected: invalid host/user/port");
+            e.sender.send("ttyspawn-ssh-reply", "ERROR: invalid host/user/port");
+            return;
+        }
+        const args = ["-p", String(port)];
+        if (user) args.push("-l", user);
+        let remoteCmd = "";
+        if (typeof arg.remoteDir === "string" && arg.remoteDir && SSH_DIR_RE.test(arg.remoteDir)) {
+            remoteCmd = "cd '" + arg.remoteDir.replace(/'/g, "") + "' && exec ${SHELL:-sh} -l";
+        }
+        if (remoteCmd) {
+            args.push("-t", host, remoteCmd);
+        } else {
+            args.push(host);
+        }
+        // Optional env for the local ssh process (validated keys only)
+        let sshEnv = cleanEnv;
+        if (arg.env && typeof arg.env === "object") {
+            const extra = {};
+            let ok = true;
+            Object.keys(arg.env).slice(0, 20).forEach(k => {
+                if (!SSH_ENV_KEY_RE.test(k) || typeof arg.env[k] !== "string" || arg.env[k].length > 200) {
+                    ok = false; return;
+                }
+                extra[k] = arg.env[k];
+            });
+            if (!ok) {
+                e.sender.send("ttyspawn-ssh-reply", "ERROR: invalid env");
+                return;
+            }
+            sshEnv = Object.assign({}, cleanEnv, extra);
+        }
+        spawnExtraTty(e, {
+            replyChannel: "ttyspawn-ssh-reply",
+            shell: "ssh",
+            params: args,
+            cwd: tty.tty._cwd || settings.cwd,
+            env: sshEnv
+        });
     });
 
     // See #630 - allow the frontend to re-attach to extra TTYs still alive after a UI reload
