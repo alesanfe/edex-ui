@@ -70,14 +70,16 @@ jobs:
     - name: Build for armv7l
       # electron-builder 26 has no armv7 7za download (maps linux/arm to the
       # x64 tarball -> spawn ENOENT under QEMU). ELECTRON_BUILDER_7ZIP_PATH
-      # points it at the native arm 7za from p7zip-full instead.
+      # points it at a native arm binary instead. Debian's p7zip (16.02) is
+      # too old to decode the arm BCJ filters in the appimage toolset archive
+      # (silently skips files) - the official `7zip` package ships 7zz 23.x.
       run: |
         docker run --rm --platform linux/arm/v7 \
           -e DEBUG=electron-builder \
-          -e ELECTRON_BUILDER_7ZIP_PATH=/usr/bin/7za \
+          -e ELECTRON_BUILDER_7ZIP_PATH=/usr/bin/7zz \
           -v "$PWD":/work -w /work \
           node:20-bookworm \
-          bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 p7zip-full >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
+          bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 7zip >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-armv7l-AppImage
