@@ -430,7 +430,7 @@ function createWindow(settings) {
             // Full renderer isolation: the page has no node/electron access.
             // Privileged operations go through src/preload.js -> ipcMain handlers.
             contextIsolation: true,
-            sandbox: false,
+            sandbox: true,
             preload: path.join(__dirname, "preload.js"),
             backgroundThrottling: false,
             webSecurity: true,
