@@ -173,6 +173,48 @@ class Terminal {
             if (typeof WebLinksAddon === "function") {
                 this.term.loadAddon(new WebLinksAddon(openLink));
             }
+
+            // Command blocks (P3-5): OSC 133 shell-integration markers. Shells
+            // emit \x1b]133;A/B/C/D when integration hooks are enabled (bash:
+            // PROMPT_COMMAND, zsh: precmd, or the shipped integrations). Each
+            // prompt line gets a marker; NEXT/PREV_BLOCK jumps between them.
+            this.commandMarkers = [];
+            try {
+                this.term.parser.registerOscHandler("133", data => {
+                    const kind = String(data || "")[0];
+                    if (kind === "A" || kind === "B") {
+                        const m = this.term.registerMarker(0);
+                        if (m) {
+                            this.commandMarkers.push(m);
+                            if (this.commandMarkers.length > 200) {
+                                const old = this.commandMarkers.shift();
+                                try { old.dispose(); } catch (_) {}
+                            }
+                        }
+                    }
+                    return true;
+                });
+            } catch (e) {
+                console.warn("OSC133 handlers unavailable:", e);
+            }
+            this._scrollToBlock = dir => {
+                const markers = this.commandMarkers.filter(m => !m.isDisposed);
+                if (!markers.length) return;
+                const base = this.term.buffer.active.viewportY;
+                const lines = markers.map(m => m.line);
+                let target = null;
+                if (dir > 0) {
+                    target = lines.find(l => l > base + 1);
+                } else {
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        if (lines[i] < base - 1) { target = lines[i]; break; }
+                    }
+                }
+                if (target !== null && target !== undefined) {
+                    this.term.scrollToLine(Math.max(0, target));
+                }
+            };
+
             this.term.attachCustomKeyEventHandler(e => {
                 window.keyboard.keydownHandler(e);
                 return true;

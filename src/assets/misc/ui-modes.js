@@ -29,7 +29,9 @@ window.UI_MODES = {
 window.UI_MONITOR_MODULES = {
     full: [
         "clock", "sysinfo", "hardwareInspector", "cpuinfo", "gpuinfo",
-        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist"
+        "tempinfo", "diskinfo", "dockinfo",
+        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist",
+        "nettopo"
     ],
     compact: ["clock", "sysinfo", "cpuinfo", "ramwatcher", "netstat"],
     off: []
@@ -50,7 +52,10 @@ window.currentPollScale = () => {
 // armed interval is base ms x currentPollScale(), recomputed on every arm.
 window.initPausable = obj => {
     obj._updaters = [];
-    obj._paused = false;
+    // Honor a pause requested before this module finished arming (MON-001):
+    // applyUIMode may run while a module's async init is still pending.
+    obj._paused = obj._pendingPaused === true;
+    delete obj._pendingPaused;
     const arm = u => {
         const scale = typeof window.currentPollScale === "function"
             ? window.currentPollScale() : 1;
@@ -105,9 +110,15 @@ window.applyUIMode = (name, persist) => {
             }
         } else if (mod && typeof mod.setPaused === "function") {
             mod.setPaused(!on);
+        } else if (mod) {
+            // Module not armed yet - stash the desired state; initPausable
+            // picks it up when the async init completes.
+            if (!on) mod._pendingPaused = true;
+            else delete mod._pendingPaused;
         }
     });
     window._lastPollScale = window.currentPollScale();
+    if (typeof window.applyPostFx === "function") window.applyPostFx();
 
     document.querySelectorAll(".mod_column").forEach(col => {
         col.style.display = caps.monitor === "off" ? "none" : "";

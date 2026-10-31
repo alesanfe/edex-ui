@@ -67,3 +67,23 @@ test("no secret field survives sanitization", () => {
     ["password", "privateKey", "passphrase"].forEach(k =>
         assert.equal(p[k], undefined));
 });
+
+test("tmuxSession: valid name produces attach-or-create remote command", () => {
+    const p = S.sanitize({alias: "a", hostname: "h", remoteDir: "~/app", tmuxSession: "work"});
+    assert.equal(p.tmuxSession, "work");
+    const args = S.buildSshArgs(p);
+    assert.match(args[args.length - 1], /cd '~\/app' && exec tmux new -A -s 'work'/);
+});
+
+test("tmuxSession: invalid names are dropped by sanitize", () => {
+    ["bad name", "a;rm -rf /", "$(x)", "a'b", "x".repeat(41), ""].forEach(name => {
+        const p = S.sanitize({alias: "a", hostname: "h", tmuxSession: name});
+        assert.equal(p.tmuxSession, "", `should drop: ${name}`);
+    });
+});
+
+test("tmuxSession without remoteDir still uses -t remote command", () => {
+    const p = S.sanitize({alias: "a", hostname: "h", tmuxSession: "s1"});
+    const args = S.buildSshArgs(p);
+    assert.deepEqual(args.slice(-3), ["-t", "h", "exec tmux new -A -s 's1'"]);
+});

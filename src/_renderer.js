@@ -470,6 +470,9 @@ async function initUI() {
     window.mods.hardwareInspector = new HardwareInspector("mod_column_left");
     window.mods.cpuinfo = new Cpuinfo("mod_column_left");
     window.mods.gpuinfo = new Gpuinfo("mod_column_left");
+    window.mods.tempinfo = new Tempinfo("mod_column_left");
+    window.mods.diskinfo = new Diskinfo("mod_column_left");
+    window.mods.dockinfo = new Dockinfo("mod_column_left");
     window.mods.ramwatcher = new RAMwatcher("mod_column_left");
     window.mods.toplist = new Toplist("mod_column_left");
 
@@ -478,6 +481,17 @@ async function initUI() {
     window.mods.globe = new LocationGlobe("mod_column_right");
     window.mods.conninfo = new Conninfo("mod_column_right");
     window.mods.openportlist = new OpenPortList("mod_column_right");
+    window.mods.nettopo = new Nettopo("mod_column_right");
+
+    // Declarative plugins (P2-8): JSON manifests under <userData>/plugins
+    if (typeof window.Plugins === "object") {
+        try {
+            const loaded = window.Plugins.load("mod_column_right", path.join(settingsDir, "plugins"));
+            if (loaded.length) console.log(`Plugins loaded: ${loaded.join(", ")}`);
+        } catch (e) {
+            console.warn("Plugin loader failed:", e);
+        }
+    }
 
     // UI mode (EPIC-03): apply saved mode, or let the user pick on first run
     if (!window.settings.uiMode) {
@@ -931,6 +945,39 @@ window.openSettings = async () => {
                             <option>${!window.settings.experimentalFeatures}</option>
                         </select></td>
                     </tr>
+                    <tr>
+                        <td>postFx.scanlines</td>
+                        <td>CRT scanline overlay intensity (0-100)</td>
+                        <td><input type="number" min="0" max="100" id="settingsEditor-postFxScanlines" value="${(window.settings.postFx && window.settings.postFx.scanlines) || 0}"></td>
+                    </tr>
+                    <tr>
+                        <td>postFx.glow</td>
+                        <td>Terminal glow intensity (0-100)</td>
+                        <td><input type="number" min="0" max="100" id="settingsEditor-postFxGlow" value="${(window.settings.postFx && window.settings.postFx.glow) || 0}"></td>
+                    </tr>
+                    <tr>
+                        <td>aiEnabled</td>
+                        <td>Enable the AI assistant (opt-in)</td>
+                        <td><select id="settingsEditor-aiEnabled">
+                            <option>${!!window.settings.aiEnabled}</option>
+                            <option>${!window.settings.aiEnabled}</option>
+                        </select></td>
+                    </tr>
+                    <tr>
+                        <td>aiEndpoint</td>
+                        <td>AI endpoint URL (default: local Ollama)</td>
+                        <td><input type="text" id="settingsEditor-aiEndpoint" value="${window.settings.aiEndpoint || "http://localhost:11434"}"></td>
+                    </tr>
+                    <tr>
+                        <td>aiModel</td>
+                        <td>AI model name</td>
+                        <td><input type="text" id="settingsEditor-aiModel" value="${window.settings.aiModel || "llama3"}"></td>
+                    </tr>
+                    <tr>
+                        <td>postFx.flicker</td>
+                        <td>CRT flicker intensity (0-100, disabled by reduced-motion)</td>
+                        <td><input type="number" min="0" max="100" id="settingsEditor-postFxFlicker" value="${(window.settings.postFx && window.settings.postFx.flicker) || 0}"></td>
+                    </tr>
                 </table>
                 <h6 id="settingsEditorStatus">Loaded values from memory</h6>
                 <br>`,
@@ -988,8 +1035,17 @@ window.writeSettingsFile = () => {
         hideDotfiles: (document.getElementById("settingsEditor-hideDotfiles").value === "true"),
         fsListView: (document.getElementById("settingsEditor-fsListView").value === "true"),
         experimentalGlobeFeatures: (document.getElementById("settingsEditor-experimentalGlobeFeatures").value === "true"),
-        experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true")
+        experimentalFeatures: (document.getElementById("settingsEditor-experimentalFeatures").value === "true"),
+        aiEnabled: (document.getElementById("settingsEditor-aiEnabled").value === "true"),
+        aiEndpoint: document.getElementById("settingsEditor-aiEndpoint").value.trim() || "http://localhost:11434",
+        aiModel: document.getElementById("settingsEditor-aiModel").value.trim() || "llama3",
+        postFx: {
+            scanlines: Math.max(0, Math.min(100, Number(document.getElementById("settingsEditor-postFxScanlines").value) || 0)),
+            glow: Math.max(0, Math.min(100, Number(document.getElementById("settingsEditor-postFxGlow").value) || 0)),
+            flicker: Math.max(0, Math.min(100, Number(document.getElementById("settingsEditor-postFxFlicker").value) || 0))
+        }
     });
+    if (typeof window.applyPostFx === "function") window.applyPostFx();
 
     Object.keys(window.settings).forEach(key => {
         if (window.settings[key] === "undefined") {
@@ -1030,6 +1086,9 @@ window.openShortcutsHelp = () => {
         "SETTINGS": "Open the settings editor.",
         "SHORTCUTS": "List and edit available keyboard shortcuts.",
         "FUZZY_SEARCH": "Search for entries in the current working directory.",
+        "NEXT_BLOCK": "Jump to the next command block (requires shell OSC-133 integration).",
+        "AI_ASSISTANT": "Open the opt-in AI assistant (local endpoint, secrets redacted).",
+        "PREV_BLOCK": "Jump to the previous command block (requires shell OSC-133 integration).",
         "FS_LIST_VIEW": "Toggle between list and grid view in the file browser.",
         "FS_DOTFILES": "Toggle hidden files and directories in the file browser.",
         "KB_PASSMODE": "Toggle the on-screen keyboard's \"Password Mode\", which allows you to safely<br>type sensitive information even if your screen might be recorded (disable visual input feedback).",
@@ -1172,6 +1231,19 @@ window.useAppShortcut = action => {
             return true;
         case "TERMINAL_SEARCH":
             window.openTermSearch();
+            return true;
+        case "NEXT_BLOCK": {
+            const t = window.term[window.currentTerm];
+            if (t && t._scrollToBlock) t._scrollToBlock(1);
+            return true;
+        }
+        case "PREV_BLOCK": {
+            const t = window.term[window.currentTerm];
+            if (t && t._scrollToBlock) t._scrollToBlock(-1);
+            return true;
+        }
+        case "AI_ASSISTANT":
+            window.openAiAssistant();
             return true;
         case "UI_MODE_NEXT":
             window.cycleUIMode();
@@ -1534,7 +1606,10 @@ window.openWorkspaces = () => {
 // ================= Monitor widgets (EPIC-06 / MON-001/002) =================
 window.openMonitorWidgets = () => {
     const keys = ["clock", "sysinfo", "hardwareInspector", "cpuinfo", "gpuinfo",
-        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist"];
+        "tempinfo", "diskinfo", "dockinfo",
+        "ramwatcher", "toplist", "netstat", "globe", "conninfo", "openportlist",
+        "nettopo",
+        ...Object.keys(window.mods || {}).filter(k => k.startsWith("plugin:"))];
     const toggles = (window.settings.monitorWidgets) || {};
     const rows = keys.map(k => {
         const on = toggles[k] !== false;
@@ -1615,6 +1690,7 @@ window.connectSsh = id => {
         user: profile.user,
         port: profile.port,
         remoteDir: profile.remoteDir,
+        tmuxSession: profile.tmuxSession || "",
         env: profile.env
     });
     ipc.once("ttyspawn-ssh-reply", (e, r) => {
@@ -1672,7 +1748,7 @@ window.deleteSshProfile = id => {
 window.editSshProfile = id => {
     const p = (window.sshStore.profiles || []).find(x => x.id === id) || {
         id: nanoid(), alias: "", hostname: "", user: "", port: 22,
-        remoteDir: "", env: {}, environment: "dev", color: "", uiMode: null, reconnect: "off"
+        remoteDir: "", env: {}, environment: "dev", color: "", uiMode: null, reconnect: "off", tmuxSession: ""
     };
     const envOpts = window.SshProfiles.ENVS.map(e =>
         `<option ${e === p.environment ? "selected" : ""}>${e}</option>`).join("");
@@ -1687,6 +1763,7 @@ window.editSshProfile = id => {
             <tr><td>User</td><td><input id="sshF-user" value="${wsEsc(p.user)}"></td></tr>
             <tr><td>Port</td><td><input id="sshF-port" type="number" value="${p.port}"></td></tr>
             <tr><td>Remote dir</td><td><input id="sshF-remoteDir" value="${wsEsc(p.remoteDir)}" placeholder="~/project"></td></tr>
+            <tr><td>tmux session</td><td><input id="sshF-tmuxSession" value="${wsEsc(p.tmuxSession || "")}" placeholder="(persistent) name or empty"></td></tr>
             <tr><td>Environment</td><td><select id="sshF-environment">${envOpts}</select></td></tr>
             <tr><td>UI mode</td><td><select id="sshF-uiMode">${modeOpts}</select></td></tr>
             <tr><td>Accent color</td><td><input id="sshF-color" value="${wsEsc(p.color)}" placeholder="#rrggbb"></td></tr>
@@ -1700,6 +1777,7 @@ window.editSshProfile = id => {
                 user: document.getElementById("sshF-user").value.trim(),
                 port: Number(document.getElementById("sshF-port").value),
                 remoteDir: document.getElementById("sshF-remoteDir").value.trim(),
+                tmuxSession: document.getElementById("sshF-tmuxSession").value.trim(),
                 env: p.env || {},
                 environment: document.getElementById("sshF-environment").value,
                 color: document.getElementById("sshF-color").value.trim(),

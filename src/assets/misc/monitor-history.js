@@ -90,5 +90,9 @@ window.MonitorHistory = (function () {
         }
     }
 
-    return {init, push, clear, flush, samples};
+    function stop() {
+        if (flushTimer) { clearInterval(flushTimer); flushTimer = null; }
+    }
+
+    return {init, push, clear, flush, stop, samples};
 })();

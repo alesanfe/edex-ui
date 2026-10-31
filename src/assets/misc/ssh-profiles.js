@@ -17,6 +17,8 @@ window.SshProfiles = (function () {
     // inject remote shell syntax.
     const REMOTE_DIR_RE = /^[~a-zA-Z0-9_\-./]+$/;
     const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    // tmux session names are embedded in the remote command - strict charset.
+    const TMUX_RE = /^[a-zA-Z0-9_.-]{1,40}$/;
 
     function sanitizeEnv(raw) {
         const out = {};
@@ -54,6 +56,8 @@ window.SshProfiles = (function () {
             color,
             uiMode: ["immersive", "productive", "light"].includes(raw.uiMode) ? raw.uiMode : null,
             reconnect: RECONNECT.includes(raw.reconnect) ? raw.reconnect : "off",
+            tmuxSession: typeof raw.tmuxSession === "string" && TMUX_RE.test(raw.tmuxSession)
+                ? raw.tmuxSession : "",
             lastUsedAt: typeof raw.lastUsedAt === "string" ? raw.lastUsedAt : null
         };
     }
@@ -78,9 +82,16 @@ window.SshProfiles = (function () {
         const args = ["-p", String(profile.port)];
         if (profile.user) args.push("-l", profile.user);
         let target = profile.hostname;
+        // Remote command chain: cd (validated path) -> tmux attach-or-create
+        // (validated session name, P3-4 persistent sessions) -> login shell.
         let remoteCmd = "";
         if (profile.remoteDir) {
-            remoteCmd = "cd '" + profile.remoteDir.replace(/'/g, "") + "' && exec ${SHELL:-sh} -l";
+            remoteCmd += "cd '" + profile.remoteDir.replace(/'/g, "") + "' && ";
+        }
+        if (typeof profile.tmuxSession === "string" && TMUX_RE.test(profile.tmuxSession)) {
+            remoteCmd += "exec tmux new -A -s '" + profile.tmuxSession + "'";
+        } else if (remoteCmd) {
+            remoteCmd += "exec ${SHELL:-sh} -l";
         }
         if (remoteCmd) {
             args.push("-t", target, remoteCmd);

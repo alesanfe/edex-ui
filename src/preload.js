@@ -211,6 +211,10 @@ contextBridge.exposeInMainWorld("edex", {
     net: {
         tcpPing: (host, port, local) => ipc.invoke("edex:net:tcpPing", host, port, local).then(chk),
         httpsGet: (opts) => ipc.invoke("edex:net:httpsGet", opts).then(chk)
+    },
+    probe: (name) => ipc.invoke("edex:probe", String(name)),
+    ai: {
+        chat: (req) => ipc.invoke("edex:ai:chat", req).then(chk)
     }
 });
 // Flags consumed by assets/misc/deps-shim.js

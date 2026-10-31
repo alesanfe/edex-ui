@@ -187,6 +187,48 @@ ipc.on("edex:geo:lookup", (e, ip) => {
     catch (_) { e.returnValue = null; }
 });
 
+// --- read-only tool probes (P3-3) --------------------------------------------
+// Whitelisted, no renderer-controlled argv. Each entry maps to a fixed
+// execFile(file, argv) - absent binaries resolve as null.
+const TOOL_PROBES = {
+    "kubectl-context": ["kubectl", ["config", "current-context"]],
+    "docker-version": ["docker", ["version", "--format", "{{.Server.Version}}"]]
+};
+ipc.handle("edex:probe", (e, name) => new Promise(resolve => {
+    const probe = TOOL_PROBES[name];
+    if (!probe) return resolve(null);
+    const { execFile } = require("child_process");
+    execFile(probe[0], probe[1], { timeout: 3000, maxBuffer: 64 * 1024 },
+        (err, stdout) => resolve(err ? null : String(stdout).trim() || null));
+}));
+
+// --- AI assistant (P3-1, opt-in local-first) ----------------------------------
+// The renderer never gets a raw fetch; every request goes through this
+// handler: https?:// URL validation, 32 KiB prompt cap, 30s timeout.
+ipc.handle("edex:ai:chat", async (e, req) => {
+    try {
+        if (!req || typeof req !== "object") return {__err: "bad request"};
+        const url = new URL(String(req.endpoint || ""));
+        if (!/^https?:$/.test(url.protocol)) return {__err: "endpoint must be http(s)"};
+        const prompt = String(req.prompt || "").slice(0, 32 * 1024);
+        if (!prompt.trim()) return {__err: "empty prompt"};
+        const model = String(req.model || "llama3").slice(0, 80);
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), 30000);
+        const res = await fetch(new URL("/api/generate", url).toString(), {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({model, prompt, stream: false}),
+            signal: ctl.signal
+        }).finally(() => clearTimeout(timer));
+        if (!res.ok) return {__err: `endpoint ${res.status}`};
+        const data = await res.json().catch(() => ({}));
+        return {response: String(data.response || data.message || "").slice(0, 64 * 1024)};
+    } catch (err) {
+        return {__err: String(err && err.message || err)};
+    }
+});
+
 // --- raw network primitives for NetStat ---------------------------------------
 // Failures resolve as {__err} - the preload rethrows them page-side, keeping
 // invoke rejections (and their main-process logging) out of the happy path.
@@ -265,6 +307,16 @@ app.commandLine.appendSwitch("ignore-gpu-blocklist");
 app.commandLine.appendSwitch("enable-gpu-rasterization");
 app.commandLine.appendSwitch("enable-video-decode");
 
+// Wayland support (P1-8): on Linux Wayland sessions, let Ozone pick the
+// Wayland backend instead of XWayland. XDG_SESSION_TYPE/WAYLAND_DISPLAY are
+// the standard indicators; XEDX_WAYLAND=0 forces X11 as an escape hatch.
+if (process.platform === "linux" && process.env.XEDX_WAYLAND !== "0" &&
+    (process.env.XDG_SESSION_TYPE === "wayland" || process.env.WAYLAND_DISPLAY)) {
+    app.commandLine.appendSwitch("ozone-platform-hint", "auto");
+    app.commandLine.appendSwitch("enable-features", "WaylandWindowDecorations");
+    signale.info("Wayland session detected - Ozone platform hint set to auto");
+}
+
 // Fix userData folder not setup on Windows
 try {
     fs.mkdirSync(electron.app.getPath("userData"));
@@ -330,6 +382,8 @@ if (!fs.existsSync(shortcutsFile)) {
         { type: "app", trigger: "Ctrl+Shift+S", action: "SETTINGS", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+K", action: "SHORTCUTS", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+F", action: "TERMINAL_SEARCH", enabled: true },
+        { type: "app", trigger: "Ctrl+Alt+Up", action: "PREV_BLOCK", enabled: true },
+        { type: "app", trigger: "Ctrl+Alt+Down", action: "NEXT_BLOCK", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+E", action: "FUZZY_SEARCH", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+L", action: "FS_LIST_VIEW", enabled: true },
         { type: "app", trigger: "Ctrl+Shift+H", action: "FS_DOTFILES", enabled: true },
@@ -353,6 +407,19 @@ if (!fs.existsSync(shortcutsFile)) {
             cuts.push({ type: "app", trigger: "Ctrl+Shift+F", action: "TERMINAL_SEARCH", enabled: true });
             fs.writeFileSync(shortcutsFile, JSON.stringify(cuts, "", 4));
             signale.info("Migrated Ctrl+Shift+F default: TERMINAL_SEARCH (FUZZY_SEARCH -> Ctrl+Shift+E)");
+        }
+        // Merge any other new default actions missing from the user's keymap
+        // (existing bindings are never rewritten).
+        const NEW_DEFAULTS = [
+            { type: "app", trigger: "Ctrl+Alt+Up", action: "PREV_BLOCK", enabled: true },
+            { type: "app", trigger: "Ctrl+Alt+Down", action: "NEXT_BLOCK", enabled: true }
+        ];
+        const actions = new Set(cuts.map(c => c.action));
+        const missing = NEW_DEFAULTS.filter(d => !actions.has(d.action));
+        if (missing.length) {
+            cuts.push(...missing);
+            fs.writeFileSync(shortcutsFile, JSON.stringify(cuts, "", 4));
+            signale.info("Added new default shortcuts: " + missing.map(m => m.action).join(", "));
         }
     } catch(e) {
         signale.warn("shortcuts.json migration skipped: " + e);
@@ -675,7 +742,13 @@ app.on('ready', async () => {
         if (user) args.push("-l", user);
         let remoteCmd = "";
         if (typeof arg.remoteDir === "string" && arg.remoteDir && SSH_DIR_RE.test(arg.remoteDir)) {
-            remoteCmd = "cd '" + arg.remoteDir.replace(/'/g, "") + "' && exec ${SHELL:-sh} -l";
+            remoteCmd = "cd '" + arg.remoteDir.replace(/'/g, "") + "' && ";
+        }
+        const SSH_TMUX_RE = /^[a-zA-Z0-9_.-]{1,40}$/;
+        if (typeof arg.tmuxSession === "string" && SSH_TMUX_RE.test(arg.tmuxSession)) {
+            remoteCmd += "exec tmux new -A -s '" + arg.tmuxSession + "'";
+        } else if (remoteCmd) {
+            remoteCmd += "exec ${SHELL:-sh} -l";
         }
         if (remoteCmd) {
             args.push("-t", host, remoteCmd);
