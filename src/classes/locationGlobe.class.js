@@ -24,9 +24,11 @@ class LocationGlobe {
         setTimeout(() => {
             let container = document.getElementById("mod_globe_innercontainer");
             let placeholder = document.getElementById("mod_globe_canvas_placeholder");
+            if (!container || !placeholder) return;
 
-            // Create Globe
-            this.globe = new this.ENCOM.Globe(placeholder.offsetWidth, placeholder.offsetHeight, {
+            // Create Globe; degrade gracefully when no WebGL context exists
+            try {
+                this.globe = new this.ENCOM.Globe(placeholder.offsetWidth, placeholder.offsetHeight, {
                 font: window.theme.cssvars.font_main,
                 data: [],
                 tiles: this._geodata.tiles,
@@ -41,7 +43,14 @@ class LocationGlobe {
                 introLinesColor: window.theme.globe.marker || `rgb(${window.theme.r},${window.theme.g},${window.theme.b})`,
                 maxPins: 300,
                 maxMarkers: 100
-            });
+                });
+            } catch (e) {
+                console.warn("Globe disabled: WebGL unavailable", e);
+                this.globe = null;
+                document.querySelector("div#mod_globe").setAttribute("class", "offline");
+                document.querySelector("i.mod_globe_headerInfo").innerText = "(NO WEBGL)";
+                return;
+            }
 
             // Place Globe
             placeholder.remove();
@@ -70,7 +79,9 @@ class LocationGlobe {
 
             // resize handler
             this.resizeHandler = () => {
+                if (!window.mods.globe.globe) return;
                 let canvas = document.querySelector("div#mod_globe canvas");
+                if (!canvas) return;
                 window.mods.globe.globe.camera.aspect = canvas.offsetWidth / canvas.offsetHeight;
                 window.mods.globe.globe.camera.updateProjectionMatrix();
                 window.mods.globe.globe.renderer.setSize(canvas.offsetWidth, canvas.offsetHeight);
@@ -146,12 +157,14 @@ class LocationGlobe {
     }
 
     addRandomConnectedMarkers() {
+        if (!this.globe) return;
         const randomLat = this.getRandomInRange(40, 90, 3);
         const randomLong = this.getRandomInRange(-180, 0, 3);
         this.globe.addMarker(randomLat, randomLong, '');
         this.globe.addMarker(randomLat - 20, randomLong + 150, '', true);
     }
     addTemporaryConnectedMarker(ip) {
+        if (!this.globe) return;
         let data = window.mods.netstat.geoLookup.get(ip);
         let geo = (data !== null ? data.location : {});
         if (geo.latitude && geo.longitude) {
@@ -169,10 +182,12 @@ class LocationGlobe {
         }
     }
     removeMarkers() {
+        if (!this.globe) return;
         this.globe.markers.forEach(marker => { marker.remove(); });
         this.globe.markers = [];
     }
     removePins() {
+        if (!this.globe) return;
         this.globe.pins.forEach(pin => {
             pin.remove();
         });
@@ -214,8 +229,10 @@ class LocationGlobe {
             //this.addRandomConnectedPoints();
             this.conns = [];
 
-            this._locPin = this.globe.addPin(newgeo.latitude, newgeo.longitude, "", 1.2);
-            this._locMarker = this.globe.addMarker(newgeo.latitude, newgeo.longitude, "", false, 1.2);
+            if (this.globe) {
+                this._locPin = this.globe.addPin(newgeo.latitude, newgeo.longitude, "", 1.2);
+                this._locMarker = this.globe.addMarker(newgeo.latitude, newgeo.longitude, "", false, 1.2);
+            }
         }
 
         this.lastgeo = newgeo;
