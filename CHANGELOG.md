@@ -3,6 +3,23 @@
 All notable changes to xDEX-UI are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.1]
+
+### Fixed
+
+- Packaged builds: GeoLite2 database now downloads into the writable
+  `userData/geoIPcache` directory instead of a temp path inside the read-only
+  `app.asar` (NetStat GeoIP failed with ENOENT on installed builds). The
+  renderer-supplied cache path is validated against `userData`.
+- Linux ARMv7l restored to the release matrix. electron-builder 26 maps
+  linux/arm to the x64 7za and the appimage-12.0.1 toolset lacks a linux-arm32
+  `desktop-file-validate`; the CI job now injects native armhf binaries via
+  `ELECTRON_BUILDER_7ZIP_PATH` / `APPIMAGE_TOOLS_PATH`.
+
+### Added
+
+- `docs/BACKLOG.md` consolidated feature tracker.
+
 ## [3.0.0] - First public release of the continuation
 
 This release represents a major security and maintenance overhaul on top of the
