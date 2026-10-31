@@ -68,18 +68,22 @@ jobs:
     - name: Run prebuild outside of QEMU emulator
       run: npm install && node prebuild-copy.js && node prebuild-minify.js && rm -rf node_modules
     - name: Build for armv7l
-      # electron-builder 26 has no armv7 7za download (maps linux/arm to the
-      # x64 tarball -> spawn ENOENT under QEMU). ELECTRON_BUILDER_7ZIP_PATH
-      # points it at a native arm binary instead. Debian's p7zip (16.02) is
-      # too old to decode the arm BCJ filters in the appimage toolset archive
-      # (silently skips files) - the official `7zip` package ships 7zz 23.x.
+      # Two upstream gaps for armv7l, both handled via electron-builder's
+      # toolset env overrides:
+      # 1) it maps linux/arm to the x64 7za tarball (spawn ENOENT) ->
+      #    ELECTRON_BUILDER_7ZIP_PATH uses Debian's native arm 7zz 23.x.
+      # 2) the appimage-12.0.1 toolset never shipped a linux-arm32
+      #    desktop-file-validate -> APPIMAGE_TOOLS_PATH points to a
+      #    pre-extracted toolset where the binary is supplied by Debian's
+      #    desktop-file-utils (native armhf).
       run: |
         docker run --rm --platform linux/arm/v7 \
           -e DEBUG=electron-builder \
           -e ELECTRON_BUILDER_7ZIP_PATH=/usr/bin/7zz \
+          -e APPIMAGE_TOOLS_PATH=/opt/appimage-tools \
           -v "$PWD":/work -w /work \
           node:20-bookworm \
-          bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 7zip >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
+          bash -lc "set -e && apt-get update -qq && apt-get install -y -qq build-essential python3 7zip desktop-file-utils curl >/dev/null && mkdir -p /opt/appimage-tools && cd /opt/appimage-tools && curl -sL -o appimage.7z https://github.com/electron-userland/electron-builder-binaries/releases/download/appimage-12.0.1/appimage-12.0.1.7z && 7zz x -bd appimage.7z -y >/dev/null && cp \$(command -v desktop-file-validate) linux-arm32/desktop-file-validate && mkdir -p lib/x64 && cp -rn linux-x64/lib/. lib/x64/ 2>/dev/null || true && cd /work && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
     - uses: actions/upload-artifact@v4
       with:
         name: Linux-armv7l-AppImage
