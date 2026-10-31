@@ -68,13 +68,13 @@ jobs:
     - name: Run prebuild outside of QEMU emulator
       run: npm install && node prebuild-copy.js && node prebuild-minify.js && rm -rf node_modules
     - name: Build for armv7l
-      # USE_SYSTEM_7ZA: electron-builder only downloads a linux-x64 7za,
-      # which cannot exec inside an armv7 container (spawn ENOENT); p7zip-full
-      # provides a native arm 7za on PATH.
+      # electron-builder 26 has no armv7 7za download (maps linux/arm to the
+      # x64 tarball -> spawn ENOENT under QEMU). ELECTRON_BUILDER_7ZIP_PATH
+      # points it at the native arm 7za from p7zip-full instead.
       run: |
         docker run --rm --platform linux/arm/v7 \
           -e DEBUG=electron-builder \
-          -e USE_SYSTEM_7ZA=true \
+          -e ELECTRON_BUILDER_7ZIP_PATH=/usr/bin/7za \
           -v "$PWD":/work -w /work \
           node:20-bookworm \
           bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 p7zip-full >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
