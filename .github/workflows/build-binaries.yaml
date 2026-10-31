@@ -42,44 +42,6 @@ jobs:
         path: dist/*.AppImage
         if-no-files-found: error
 
-  build-linux-armv7l:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Setup QEMU
-      uses: docker/setup-qemu-action@v3
-      with:
-        platforms: arm
-    - name: Cache node modules
-      uses: actions/cache@v4
-      env:
-        cache-name: cache-node-modules
-      with:
-        # npm cache files are stored in `~/.npm` on Linux/macOS
-        path: ~/.npm
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-    - name: Cache Electron binaries
-      uses: actions/cache@v4
-      env:
-        cache-name: cache-electron-bins
-      with:
-        path: ~/.cache/electron
-        key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('**/package-lock.json') }}
-    - name: Run prebuild outside of QEMU emulator
-      run: npm install && node prebuild-copy.js && node prebuild-minify.js && rm -rf node_modules
-    - name: Build for armv7l
-      run: |
-        docker run --rm --platform linux/arm/v7 \
-          -e DEBUG=electron-builder \
-          -v "$PWD":/work -w /work \
-          node:20-bullseye \
-          bash -lc "apt-get update -qq && apt-get install -y -qq build-essential python3 >/dev/null && npm install --ignore-scripts && ./node_modules/.bin/electron-builder build -l --armv7l -p never"
-    - uses: actions/upload-artifact@v4
-      with:
-        name: Linux-armv7l-AppImage
-        path: dist/*.AppImage
-        if-no-files-found: error
-
   build-linux-arm64:
     runs-on: ubuntu-latest
     steps:
@@ -191,7 +153,7 @@ jobs:
   release:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build-linux, build-linux-armv7l, build-linux-arm64, build-windows, build-darwin]
+    needs: [build-linux, build-linux-arm64, build-windows, build-darwin]
     runs-on: ubuntu-latest
     permissions:
       contents: write
