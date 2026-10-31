@@ -18,7 +18,8 @@ class UpdateChecker {
             }
         }).then(res => {
             if (res.status === 404) {
-                this._fail("Got 404 (Not Found) response from server");
+                // Repository has no published releases yet - nothing to compare against
+                electron.ipcRenderer.send("log", "info", "UpdateChecker: No releases published upstream; skipping update check.");
                 return;
             }
 

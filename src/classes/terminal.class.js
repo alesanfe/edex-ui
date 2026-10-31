@@ -362,6 +362,19 @@ class Terminal {
                                 }
                             });
                             break;
+                        case "Windows_NT":
+                            // Walk down the process tree to the deepest, most recent descendant
+                            require("child_process").execFile("powershell.exe", [
+                                "-NoProfile", "-NonInteractive", "-Command",
+                                `$p=${pid};$n='';while($c=(Get-CimInstance Win32_Process -Filter "ParentProcessId=$p"|Sort-Object CreationDate|Select-Object -Last 1)){$p=$c.ProcessId;$n=$c.Name};if(!$n){$n=(Get-CimInstance Win32_Process -Filter "ProcessId=$p").Name};Write-Output $n`
+                            ], (e, proc) => {
+                                if (e !== null) {
+                                    reject(e);
+                                } else {
+                                    resolve(proc.trim().replace(/\.exe$/i, ""));
+                                }
+                            });
+                            break;
                         default:
                             reject("Unsupported OS");
                     }
@@ -380,7 +393,9 @@ class Terminal {
                         }
                     }).catch(e => {
                         if (!this._closed) {
-                            console.log("Error while tracking TTY working directory: ", e);
+                            if (e !== "Unsupported OS") {
+                                console.log("Error while tracking TTY working directory: ", e);
+                            }
                             this._disableCWDtracking = true;
                             try {
                                 this.renderer.send("terminal_channel-"+this.port, "Fallback cwd", opts.cwd || process.env.PWD);
@@ -401,7 +416,10 @@ class Terminal {
                         }
                     }).catch(e => {
                         if (!this._closed) {
-                            console.log("Error while retrieving TTY subprocess: ", e);
+                            if (!this._processErrorLogged) {
+                                this._processErrorLogged = true;
+                                console.log("Error while retrieving TTY subprocess: ", e);
+                            }
                             try {
                                 this.renderer.send("terminal_channel-"+this.port, "New process", "");
                             } catch(e) {
