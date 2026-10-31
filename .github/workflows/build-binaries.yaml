@@ -197,19 +197,57 @@ jobs:
       contents: write
     steps:
     - uses: actions/checkout@v4
+    # --- Automated release checklist (REL-004) ---------------------------------
+    - name: Verify tag matches package version
+      run: |
+        TAG="${GITHUB_REF_NAME#v}"
+        PKGVER=$(node -p "require('./package.json').version")
+        SRCVER=$(node -p "require('./src/package.json').version")
+        echo "tag=$TAG package=$PKGVER src=$SRCVER"
+        # Allow prerelease tags like v3.0.0-rc.1 to match base version 3.0.0
+        BASE="${TAG%%-*}"
+        [ "$BASE" = "$PKGVER" ] || { echo "::error::tag $TAG != package.json $PKGVER"; exit 1; }
+        [ "$BASE" = "$SRCVER" ] || { echo "::error::tag $TAG != src/package.json $SRCVER"; exit 1; }
+    - name: Verify release tag ships from an authorized branch
+      run: |
+        git fetch --depth=1 origin '+refs/heads/*:refs/remotes/origin/*' || true
+        # Hard rule: refuse to release a commit that is not on any pushed branch.
+        if ! git branch -r --contains "$GITHUB_SHA" | grep -q .; then
+          echo "::error::tag commit is not on any remote branch - refusing to publish"
+          exit 1
+        fi
+        # Informational: warn when the release line is not the default branch.
+        DEF=$(git remote show origin | sed -n 's/.*HEAD branch: //p')
+        if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/$DEF" 2>/dev/null; then
+          echo "::warning::tag commit is not an ancestor of default branch '$DEF'"
+        fi
     - name: Download all build artifacts
       uses: actions/download-artifact@v4
       with:
         path: artifacts
         merge-multiple: true
+    - name: Verify expected artifacts are present
+      run: |
+        cd artifacts
+        ls -la
+        MISSING=0
+        for pat in "xDEX-UI-Windows" "xDEX-UI-Linux" "xDEX-UI-macOS"; do
+          ls $pat* >/dev/null 2>&1 || { echo "::error::expected artifact matching '$pat*' missing"; MISSING=1; }
+        done
+        [ "$MISSING" = "0" ]
     - name: Generate SHA-256 checksums
       run: |
         cd artifacts
-        sha256sum * > checksums.sha256
+        sha256sum * > SHA256SUMS.txt
+        cat SHA256SUMS.txt
     - name: Generate SBOM
       run: |
-        npm sbom --sbom-format cyclonedx --omit=dev > artifacts/sbom.cyclonedx.json || true
+        npm sbom --sbom-format cyclonedx --omit=dev > artifacts/sbom.cyclonedx.json
+        node -e "const s=require('./artifacts/sbom.cyclonedx.json'); if(!s.components||!s.components.length) throw new Error('empty SBOM')"
     - name: Create GitHub release
-      run: gh release create "$GITHUB_REF_NAME" artifacts/* --title "xDEX-UI $GITHUB_REF_NAME" --generate-notes
+      run: |
+        PRE=""
+        case "$GITHUB_REF_NAME" in *-*) PRE="--prerelease";; esac
+        gh release create "$GITHUB_REF_NAME" artifacts/* --title "xDEX-UI $GITHUB_REF_NAME" --generate-notes $PRE
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

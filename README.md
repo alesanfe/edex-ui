@@ -46,11 +46,27 @@ _[cmatrix](https://github.com/abishekvashok/cmatrix) on eDEX-UI 2.2 with the exp
 
 _Editing eDEX-UI source code with `nvim` on eDEX-UI 2.2 with the custom [`horizon-full`](https://github.com/GitSquared/horizon-edex-theme) theme_
 
+## Installation
+
+Download the latest release from the [Releases](../../releases) page:
+
+| Platform | Artifact | Notes |
+|---|---|---|
+| Windows (x64) | `xDEX-UI-Windows-*.exe` | NSIS installer, per-user |
+| macOS (x64 + arm64) | `xDEX-UI-macOS-*.dmg` | Apple Silicon supported |
+| Linux (x64) | `xDEX-UI-Linux-*.AppImage` | `chmod +x` required before running |
+
+Every release ships `SHA256SUMS.txt` (verify with `certutil -hashfile <file> SHA256`
+on Windows or `sha256sum -c` elsewhere) and a CycloneDX SBOM (`sbom.json`).
+Supported platforms: Windows 10/11 x64, macOS 12+ (Intel & Apple Silicon),
+modern Linux distros (glibc). See `SECURITY.md` for signature and disclosure
+policy, and `CHANGELOG.md` for what changed vs the original eDEX-UI.
+
 ## Q&A
 #### How do I get it?
-Click on the little badges under the xDEX logo at the top of this page, or go to the [Releases](https://github.com/andreas-hartmann/xdex-ui/releases) tab, or download it through [one of the available repositories](https://repology.org/project/edex-ui/versions) (Homebrew, AUR...).
+Click on the little badges under the xDEX logo at the top of this page, or go to the [Releases](../../releases) tab.
 
-Public release binaries are unsigned ([why](https://gaby.dev/posts/code-signing)). On Linux, you will need to `chmod +x` the AppImage file in order to run it.
+Public release binaries are unsigned ([why](https://gaby.dev/posts/code-signing)) unless release signing secrets are configured in CI. On Linux, you will need to `chmod +x` the AppImage file in order to run it.
 #### I have a problem!
 Search through the [Issues](https://github.com/andreas-hartmann/xdex-ui/issues) to see if yours has already been reported. If you're confident it hasn't been reported yet, feel free to open up a new one. If you see your issue and it's been closed, it probably means that the fix for it will ship in the next version, and you'll have to wait a bit.
 #### Can you disable the keyboard/the filesystem display?
