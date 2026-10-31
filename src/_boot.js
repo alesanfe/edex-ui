@@ -173,8 +173,13 @@ ipc.handle("edex:geo:init", async (e, cacheDir) => {
     if (geoReader) return true;
     const geolite2 = require("geolite2-redist");
     const maxmind = require("maxmind");
-    await geolite2.downloadDbs(cacheDir);
-    geoReader = await geolite2.open("GeoLite2-City", p => maxmind.open(p));
+    // geolite2-redist v4 takes {dbList, path} - passing a bare string makes it
+    // default to a dir under the package root, which is read-only inside asar.
+    const dir = (typeof cacheDir === "string" && path.isAbsolute(cacheDir))
+        ? cacheDir
+        : path.join(electron.app.getPath("userData"), "geoIPcache");
+    await geolite2.downloadDbs({dbList: [geolite2.GeoIpDbName.City], path: dir});
+    geoReader = await geolite2.open("GeoLite2-City", p => maxmind.open(p), dir);
     return true;
 });
 ipc.on("edex:geo:lookup", (e, ip) => {
